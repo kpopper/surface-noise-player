@@ -1,0 +1,37 @@
+name: surface_noise_player
+description: Browse and play music from iCloud Drive with tagging support.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Audio playback
+  just_audio: ^0.10.5
+  just_audio_background: ^0.0.1-beta.13
+  audio_session: ^0.2.3
+
+  # Local database for tags
+  sqflite: ^2.3.3
+  path: ^1.9.0
+
+  # State management
+  provider: ^6.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  mocktail: ^1.0.4
+  sqflite_common_ffi: ^2.3.4+1
+
+flutter:
+  config:
+    enable-lldb-debugging: false
+  uses-material-design: true
+  assets:
+    - assets/

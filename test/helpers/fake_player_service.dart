@@ -1,0 +1,64 @@
+import 'dart:async';
+import 'package:just_audio/just_audio.dart';
+import 'package:surface_noise_player/models/release.dart';
+import 'package:surface_noise_player/services/abstract_player_service.dart';
+
+class FakePlayerService implements AbstractPlayerService {
+  final _sequenceStateController =
+      StreamController<SequenceState?>.broadcast();
+  final _playerStateController = StreamController<PlayerState>.broadcast();
+
+  @override
+  Release? currentRelease;
+
+  @override
+  bool hasPrevious = false;
+
+  @override
+  bool hasNext = false;
+
+  // Recorded calls
+  bool playCalled = false;
+  bool pauseCalled = false;
+  Release? lastPlayedRelease;
+  int? lastPlayedTrackIndex;
+
+  @override
+  Stream<SequenceState?> get sequenceStateStream =>
+      _sequenceStateController.stream;
+
+  @override
+  Stream<PlayerState> get playerStateStream => _playerStateController.stream;
+
+  @override
+  Future<void> play() async => playCalled = true;
+
+  @override
+  Future<void> pause() async => pauseCalled = true;
+
+  @override
+  Future<void> seekToPrevious() async {}
+
+  @override
+  Future<void> seekToNext() async {}
+
+  @override
+  Future<void> playRelease(Release release, {int trackIndex = 0}) async {
+    currentRelease = release;
+    lastPlayedRelease = release;
+    lastPlayedTrackIndex = trackIndex;
+  }
+
+  @override
+  Future<void> playTrack(Release release, int trackIndex) =>
+      playRelease(release, trackIndex: trackIndex);
+
+  void emitPlayerState({required bool playing}) {
+    _playerStateController.add(PlayerState(playing, ProcessingState.ready));
+  }
+
+  void dispose() {
+    _sequenceStateController.close();
+    _playerStateController.close();
+  }
+}
