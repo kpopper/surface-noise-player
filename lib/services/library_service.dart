@@ -37,6 +37,8 @@ class LibraryService {
   Future<String?> getSavedRoot() => _db.savedLibraryRoot();
 
   Future<List<Release>> scanLibrary(String rootPath) async {
+    await _metadata.cleanupArtworkCache();
+
     final root = Directory(rootPath);
     if (!await root.exists()) return [];
 

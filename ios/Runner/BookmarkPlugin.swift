@@ -39,6 +39,9 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                 return
             }
             extractArtwork(path: path, result: result)
+        case "cleanupArtworkCache":
+            cleanupArtworkCache()
+            result(nil)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -173,6 +176,16 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
             }
 
             DispatchQueue.main.async { result(out) }
+        }
+    }
+
+    // MARK: - Cleanup artwork cache
+
+    private func cleanupArtworkCache() {
+        let tempDir = NSTemporaryDirectory()
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: tempDir) else { return }
+        for file in files where file.hasPrefix("snp_art_") {
+            try? FileManager.default.removeItem(atPath: tempDir + file)
         }
     }
 

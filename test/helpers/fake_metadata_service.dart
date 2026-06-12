@@ -16,4 +16,9 @@ class FakeMetadataService implements MetadataService {
 
   @override
   Future<String?> extractArtwork(String path) async => artworkPaths[path];
+
+  bool cleanupCalled = false;
+
+  @override
+  Future<void> cleanupArtworkCache() async => cleanupCalled = true;
 }

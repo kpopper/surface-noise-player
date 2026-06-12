@@ -68,6 +68,11 @@ void main() {
       await File('${parent.path}/$name').create();
     }
 
+    test('cleans up artwork cache at the start of each scan', () async {
+      await service.scanLibrary(tempRoot.path);
+      expect(fakeMetadata.cleanupCalled, isTrue);
+    });
+
     test('returns empty list when root does not exist', () async {
       final releases = await service.scanLibrary('/nonexistent/path');
       expect(releases, isEmpty);

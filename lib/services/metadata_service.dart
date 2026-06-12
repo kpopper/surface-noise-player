@@ -24,10 +24,18 @@ abstract class MetadataService {
 
   Future<AudioMetadata> readMetadata(String path);
   Future<String?> extractArtwork(String path);
+  Future<void> cleanupArtworkCache();
 }
 
 class _MetadataServiceImpl implements MetadataService {
   static const _channel = MethodChannel('com.yourname.surface_noise_player/bookmarks');
+
+  @override
+  Future<void> cleanupArtworkCache() async {
+    try {
+      await _channel.invokeMethod<void>('cleanupArtworkCache');
+    } catch (_) {}
+  }
 
   @override
   Future<String?> extractArtwork(String path) async {
