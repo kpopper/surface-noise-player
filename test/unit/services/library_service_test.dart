@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/database_service.dart';
 import 'package:surface_noise_player/services/library_service.dart';
 import 'package:surface_noise_player/services/metadata_service.dart';
@@ -314,6 +315,111 @@ void main() {
       final releases = await service.scanLibrary(tempRoot.path);
       expect(releases.first.albumArtist, 'The Artist');
       expect(releases.first.albumTitle, 'Great Album');
+    });
+  });
+
+  group('quickScanLibrary', () {
+    late Directory tempRoot;
+    late DatabaseService dbService;
+    late FakeMetadataService fakeMetadata;
+    late LibraryService service;
+
+    setUp(() async {
+      tempRoot = await Directory.systemTemp.createTemp('snp_quick_test_');
+      dbService = DatabaseService.forTest(inMemoryDatabasePath);
+      fakeMetadata = FakeMetadataService();
+      service = LibraryService.forTest(dbService, metadata: fakeMetadata);
+    });
+
+    tearDown(() async {
+      await dbService.closeForTest();
+      await tempRoot.delete(recursive: true);
+    });
+
+    Future<void> createAudioFile(Directory parent, String name) async {
+      await File('${parent.path}/$name').create();
+    }
+
+    test('returns empty list when root does not exist', () async {
+      final releases = await service.quickScanLibrary('/nonexistent', []);
+      expect(releases, isEmpty);
+    });
+
+    test('adds a new folder not in the existing list', () async {
+      final albumDir = await Directory('${tempRoot.path}/New Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+
+      final releases = await service.quickScanLibrary(tempRoot.path, []);
+      expect(releases.length, 1);
+      expect(releases.first.name, 'New Album');
+    });
+
+    test('keeps an existing release whose folder still exists', () async {
+      final albumDir = await Directory('${tempRoot.path}/Existing Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      final existing = [
+        Release(folderPath: albumDir.path, name: 'Existing Album', tracks: const [], tags: const []),
+      ];
+
+      final releases = await service.quickScanLibrary(tempRoot.path, existing);
+      expect(releases.length, 1);
+      expect(releases.first.name, 'Existing Album');
+    });
+
+    test('does not re-scan an existing release', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(title: 'Should Not Appear');
+      final existing = [
+        Release(folderPath: albumDir.path, name: 'Album', tracks: const [], tags: const []),
+      ];
+
+      final releases = await service.quickScanLibrary(tempRoot.path, existing);
+      // Tracks come from existing (empty), not re-scanned
+      expect(releases.first.tracks, isEmpty);
+    });
+
+    test('removes a release whose folder no longer exists', () async {
+      final existing = [
+        Release(folderPath: '${tempRoot.path}/Gone Album', name: 'Gone Album', tracks: const [], tags: const []),
+      ];
+
+      final releases = await service.quickScanLibrary(tempRoot.path, existing);
+      expect(releases, isEmpty);
+    });
+
+    test('handles a mix of new, existing, and removed folders', () async {
+      final keepDir = await Directory('${tempRoot.path}/Keep').create();
+      await createAudioFile(keepDir, '01.mp3');
+      final newDir = await Directory('${tempRoot.path}/New').create();
+      await createAudioFile(newDir, '01.mp3');
+
+      final existing = [
+        Release(folderPath: keepDir.path, name: 'Keep', tracks: const [], tags: const []),
+        Release(folderPath: '${tempRoot.path}/Gone', name: 'Gone', tracks: const [], tags: const []),
+      ];
+
+      final releases = await service.quickScanLibrary(tempRoot.path, existing);
+      expect(releases.length, 2);
+      expect(releases.map((r) => r.name), containsAll(['Keep', 'New']));
+      expect(releases.map((r) => r.name), isNot(contains('Gone')));
+    });
+
+    test('sorts result alphabetically', () async {
+      final zDir = await Directory('${tempRoot.path}/Zebra').create();
+      await createAudioFile(zDir, '01.mp3');
+      final aDir = await Directory('${tempRoot.path}/Apple').create();
+      await createAudioFile(aDir, '01.mp3');
+      final mDir = await Directory('${tempRoot.path}/Mango').create();
+      await createAudioFile(mDir, '01.mp3');
+
+      final releases = await service.quickScanLibrary(tempRoot.path, []);
+      expect(releases.map((r) => r.name).toList(), ['Apple', 'Mango', 'Zebra']);
+    });
+
+    test('does not clean up artwork cache', () async {
+      await service.quickScanLibrary(tempRoot.path, []);
+      expect(fakeMetadata.cleanupCalled, isFalse);
     });
   });
 

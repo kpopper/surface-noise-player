@@ -17,6 +17,8 @@ writing a feature; remove or update it when behaviour changes.
 - Tracks within a release are numbered starting from 1
 - Leading track-number prefixes are stripped from filenames to produce the track title (e.g. `01 - Song.mp3` → `Song`, `02. Another.flac` → `Another`)
 - A previously selected root folder is remembered across app restarts
+- On app launch and when the refresh button is pressed, a quick scan runs: new folders are added, folders that no longer exist are removed, and existing releases are kept as-is without re-reading metadata or artwork
+- When a folder is selected for the first time, a full scan runs: all folders are re-read, metadata extracted, and the artwork cache is refreshed
 
 ## Tags
 
