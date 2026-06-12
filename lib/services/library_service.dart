@@ -47,7 +47,8 @@ class LibraryService {
         final scan = await _scanFolder(entity.path);
         if (scan.tracks.isNotEmpty) {
           final tags = await _db.tagsForRelease(entity.path);
-          final artPath = await _findArtFile(entity.path);
+          final firstTrackPath = scan.tracks.isNotEmpty ? scan.tracks.first.path : null;
+          final artPath = await _findArtFile(entity.path, firstTrackPath: firstTrackPath);
           final folderName = entity.path.split('/').last;
           final name = (scan.albumArtist != null && scan.albumTitle != null)
               ? '${scan.albumArtist} - ${scan.albumTitle}'
@@ -107,7 +108,7 @@ class LibraryService {
     return (tracks: tracks, albumArtist: albumArtist, albumTitle: albumTitle);
   }
 
-  Future<String?> _findArtFile(String folderPath) async {
+  Future<String?> _findArtFile(String folderPath, {String? firstTrackPath}) async {
     for (final name in _preferredArtFilenames) {
       final f = File('$folderPath/$name');
       if (await f.exists()) return f.path;
@@ -117,6 +118,9 @@ class LibraryService {
       if (entity is File && _artExtensions.any(entity.path.toLowerCase().endsWith)) {
         return entity.path;
       }
+    }
+    if (firstTrackPath != null) {
+      return await _metadata.extractArtwork(firstTrackPath);
     }
     return null;
   }

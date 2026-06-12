@@ -32,6 +32,13 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                 return
             }
             readMetadata(path: path, result: result)
+        case "extractArtwork":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
+                return
+            }
+            extractArtwork(path: path, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -166,6 +173,42 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
             }
 
             DispatchQueue.main.async { result(out) }
+        }
+    }
+
+    // MARK: - Extract artwork
+
+    private func extractArtwork(path: String, result: @escaping FlutterResult) {
+        let url = URL(fileURLWithPath: path)
+        let asset = AVURLAsset(url: url)
+
+        asset.loadValuesAsynchronously(forKeys: ["commonMetadata"]) {
+            guard asset.statusOfValue(forKey: "commonMetadata", error: nil) == .loaded else {
+                DispatchQueue.main.async { result(nil) }
+                return
+            }
+
+            for item in asset.commonMetadata {
+                guard item.commonKey == .commonKeyArtwork, let data = item.dataValue else { continue }
+
+                let dir = (path as NSString).deletingLastPathComponent
+                let folderName = (dir as NSString).lastPathComponent
+                let safeName = folderName
+                    .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                    .filter { !$0.isEmpty }
+                    .joined(separator: "_")
+                let tempPath = NSTemporaryDirectory() + "snp_art_\(safeName).jpg"
+
+                do {
+                    try data.write(to: URL(fileURLWithPath: tempPath))
+                    DispatchQueue.main.async { result(tempPath) }
+                } catch {
+                    DispatchQueue.main.async { result(nil) }
+                }
+                return
+            }
+
+            DispatchQueue.main.async { result(nil) }
         }
     }
 

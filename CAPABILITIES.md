@@ -41,7 +41,8 @@ writing a feature; remove or update it when behaviour changes.
 - A release folder may contain cover art as a `.jpg`, `.jpeg`, or `.png` file
 - Preferred filenames are checked in order: `cover.jpg`, `folder.jpg`, `artwork.jpg`, `front.jpg`
 - If none of those are present, the first image file found in the folder is used
-- If no image file is present, `artPath` is null and a placeholder is shown
+- If no image file is present, embedded artwork from the audio files is extracted and used
+- If neither a file nor embedded artwork is available, `artPath` is null and a placeholder is shown
 - A release card shows a square thumbnail of the cover art (or placeholder) on the left
 - The release screen shows the cover art as a full-width header above the track list
 - The mini player shows a small thumbnail next to the track and album name

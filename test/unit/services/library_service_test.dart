@@ -188,6 +188,29 @@ void main() {
       expect(releases.first.artPath, '${albumDir.path}/cover.jpg');
     });
 
+    test('uses embedded artwork when no image file is present', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      final trackPath = '${albumDir.path}/01.mp3';
+      await File(trackPath).create();
+      fakeMetadata = FakeMetadataService(artworkPaths: {trackPath: '/tmp/extracted.jpg'});
+      service = LibraryService.forTest(dbService, metadata: fakeMetadata);
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.artPath, '/tmp/extracted.jpg');
+    });
+
+    test('prefers image file over embedded artwork', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      final trackPath = '${albumDir.path}/01.mp3';
+      await File(trackPath).create();
+      await createAudioFile(albumDir, 'cover.jpg');
+      fakeMetadata = FakeMetadataService(artworkPaths: {trackPath: '/tmp/extracted.jpg'});
+      service = LibraryService.forTest(dbService, metadata: fakeMetadata);
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.artPath, '${albumDir.path}/cover.jpg');
+    });
+
     test('falls back to folder.jpg when no preferred name matches', () async {
       final albumDir = await Directory('${tempRoot.path}/Album').create();
       await createAudioFile(albumDir, '01.mp3');

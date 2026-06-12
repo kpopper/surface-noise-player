@@ -23,10 +23,20 @@ abstract class MetadataService {
   static MetadataService get instance => _instance ??= _MetadataServiceImpl();
 
   Future<AudioMetadata> readMetadata(String path);
+  Future<String?> extractArtwork(String path);
 }
 
 class _MetadataServiceImpl implements MetadataService {
   static const _channel = MethodChannel('com.yourname.surface_noise_player/bookmarks');
+
+  @override
+  Future<String?> extractArtwork(String path) async {
+    try {
+      return await _channel.invokeMethod<String>('extractArtwork', {'path': path});
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   Future<AudioMetadata> readMetadata(String path) async {
