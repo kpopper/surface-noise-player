@@ -181,7 +181,7 @@ iCloud Drive is not available in the Simulator — you need a real device to tes
 2. Unlock your iPhone and tap **Trust** when prompted
 3. Open `ios/Runner.xcworkspace` in Xcode
 4. Sign in with your Apple ID: Xcode → Settings → Accounts → Add Apple ID
-5. Under **Signing & Capabilities**, select your Personal Team
+5. Select the **Runner** target, go to **Signing & Capabilities**, and choose your Personal Team from the dropdown — the signing team is intentionally not stored in the repository, so each developer sets their own here
 6. Select your iPhone in the Xcode toolbar and click Run (▶) once to register the device
 
 After that first Xcode run, you can deploy directly from VS Code — just select your iPhone in the device picker and press `F5`.

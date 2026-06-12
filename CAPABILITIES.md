@@ -36,10 +36,20 @@ writing a feature; remove or update it when behaviour changes.
 - Clearing the filter restores the full release list
 - A filter that matches no releases shows an empty state
 
+## Album art
+
+- A release folder may contain cover art as a `.jpg`, `.jpeg`, or `.png` file
+- Preferred filenames are checked in order: `cover.jpg`, `folder.jpg`, `artwork.jpg`, `front.jpg`
+- If none of those are present, the first image file found in the folder is used
+- If no image file is present, `artPath` is null and a placeholder is shown
+- A release card shows a square thumbnail of the cover art (or placeholder) on the left
+- The release screen shows the cover art as a full-width header above the track list
+- The mini player shows a small thumbnail next to the track and album name
+
 ## Release data
 
-- A release has a folder path, a name, a list of tracks, and a list of tags
-- Copying a release with new tags preserves the folder path, name, and tracks
+- A release has a folder path, a name, a list of tracks, a list of tags, and an optional art path
+- Copying a release with new tags preserves the folder path, name, tracks, and art path
 - A track has a file path, a title, a track number, and an optional duration
 
 ## Library screen

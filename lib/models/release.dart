@@ -17,12 +17,14 @@ class Release {
   final String name;
   final List<Track> tracks;
   final List<String> tags;
+  final String? artPath;
 
   const Release({
     required this.folderPath,
     required this.name,
     required this.tracks,
     required this.tags,
+    this.artPath,
   });
 
   Release copyWith({List<String>? tags}) => Release(
@@ -30,5 +32,6 @@ class Release {
         name: name,
         tracks: tracks,
         tags: tags ?? this.tags,
+        artPath: artPath,
       );
 }
