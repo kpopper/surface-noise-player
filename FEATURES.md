@@ -4,6 +4,7 @@
 
 - [ ] Search — filter releases by name on the library screen
 - [ ] iCloud placeholder handling — detect undownloaded `.icloud` files and show a download prompt
+- [ ] Airplay integration
 
 ## Completed
 
