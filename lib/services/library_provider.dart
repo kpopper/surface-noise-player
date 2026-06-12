@@ -44,6 +44,7 @@ class LibraryProvider extends ChangeNotifier {
     loading = true;
     notifyListeners();
     _releases = await _svc.quickScanLibrary(rootPath!, _releases);
+    _sortByActivity(_releases);
     loading = false;
     notifyListeners();
   }
@@ -52,12 +53,36 @@ class LibraryProvider extends ChangeNotifier {
     loading = true;
     notifyListeners();
     _releases = await _svc.scanLibrary(rootPath!);
+    _sortByActivity(_releases);
     loading = false;
     notifyListeners();
   }
 
   Future<void> refresh() async {
     if (rootPath != null) await _quickScan();
+  }
+
+  Future<void> recordPlay(String folderPath) async {
+    await _svc.recordPlay(folderPath);
+    final index = _releases.indexWhere((r) => r.folderPath == folderPath);
+    if (index >= 0) {
+      _releases[index] = _releases[index].copyWith(lastActivityAt: DateTime.now());
+      _sortByActivity(_releases);
+      notifyListeners();
+    }
+  }
+
+  void _sortByActivity(List<Release> releases) {
+    releases.sort((a, b) {
+      final aTime = a.lastActivityAt;
+      final bTime = b.lastActivityAt;
+      if (aTime == null && bTime == null) {
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      }
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      return bTime.compareTo(aTime);
+    });
   }
 
   void toggleTag(String tag) {

@@ -4,11 +4,12 @@ import 'package:surface_noise_player/services/library_provider.dart';
 import '../../helpers/fake_bookmark_service.dart';
 import '../../helpers/fake_library_service.dart';
 
-Release makeRelease(String name, {List<String> tags = const []}) => Release(
+Release makeRelease(String name, {List<String> tags = const [], DateTime? lastActivityAt}) => Release(
       folderPath: '/music/$name',
       name: name,
       tracks: const [],
       tags: tags,
+      lastActivityAt: lastActivityAt,
     );
 
 void main() {
@@ -203,6 +204,54 @@ void main() {
       await provider.removeTagFromRelease(release, 'jazz');
       expect(provider.allReleases.first.tags, ['vinyl']);
       expect(provider.allReleases.first.tags, isNot(contains('jazz')));
+    });
+  });
+
+  group('sort by recent activity', () {
+    test('releases with activity appear before those without', () async {
+      final t = DateTime(2025, 6, 1);
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        makeRelease('No Activity'),
+        makeRelease('Has Activity', lastActivityAt: t),
+      ];
+      await provider.init();
+      expect(provider.releases.first.name, 'Has Activity');
+    });
+
+    test('more recent activity sorts before older', () async {
+      final older = DateTime(2025, 1, 1);
+      final newer = DateTime(2025, 6, 1);
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        makeRelease('Older', lastActivityAt: older),
+        makeRelease('Newer', lastActivityAt: newer),
+      ];
+      await provider.init();
+      expect(provider.releases.first.name, 'Newer');
+    });
+
+    test('releases without activity sort alphabetically at the end', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        makeRelease('Zebra'),
+        makeRelease('Apple'),
+      ];
+      await provider.init();
+      expect(provider.releases.map((r) => r.name).toList(), ['Apple', 'Zebra']);
+    });
+
+    test('recordPlay calls service and moves release to top', () async {
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        makeRelease('B', lastActivityAt: yesterday),
+        makeRelease('A'),
+      ];
+      await provider.init();
+      await provider.recordPlay('/music/A');
+      expect(provider.releases.first.name, 'A');
+      expect(fakeService.lastRecordedPlayPath, '/music/A');
     });
   });
 

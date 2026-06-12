@@ -19,6 +19,13 @@ writing a feature; remove or update it when behaviour changes.
 - A previously selected root folder is remembered across app restarts
 - On app launch and when the refresh button is pressed, a quick scan runs: new folders are added, folders that no longer exist are removed, and existing releases are kept as-is without re-reading metadata or artwork
 - When a folder is selected for the first time, a full scan runs: all folders are re-read, metadata extracted, and the artwork cache is refreshed
+- Newly discovered folders are assigned an activity timestamp when first added, so they appear at the top of the library
+
+## Library sorting
+
+- Releases are sorted by most recent activity (played or added), newest first
+- A release's activity timestamp is set when it is first discovered and updated when it is played
+- Releases with no recorded activity are sorted alphabetically at the end of the list
 
 ## Tags
 

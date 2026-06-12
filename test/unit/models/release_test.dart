@@ -127,5 +127,41 @@ void main() {
       expect(updated.albumTitle, 'Great Album');
       expect(updated.albumArtist, 'Great Artist');
     });
+
+    test('lastActivityAt defaults to null', () {
+      expect(release.lastActivityAt, isNull);
+    });
+
+    test('stores lastActivityAt when provided', () {
+      final t = DateTime(2025, 1, 1);
+      final r = Release(
+        folderPath: '/music/album',
+        name: 'Album',
+        tracks: [],
+        tags: [],
+        lastActivityAt: t,
+      );
+      expect(r.lastActivityAt, t);
+    });
+
+    test('copyWith replaces lastActivityAt', () {
+      final t = DateTime(2025, 6, 1);
+      final r = Release(folderPath: '/music/album', name: 'Album', tracks: [], tags: []);
+      final updated = r.copyWith(lastActivityAt: t);
+      expect(updated.lastActivityAt, t);
+    });
+
+    test('copyWith preserves lastActivityAt when not specified', () {
+      final t = DateTime(2025, 6, 1);
+      final r = Release(
+        folderPath: '/music/album',
+        name: 'Album',
+        tracks: [],
+        tags: ['jazz'],
+        lastActivityAt: t,
+      );
+      final updated = r.copyWith(tags: ['rock']);
+      expect(updated.lastActivityAt, t);
+    });
   });
 }

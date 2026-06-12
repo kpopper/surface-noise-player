@@ -33,6 +33,13 @@ class FakeLibraryService implements LibraryService {
     return releasesToReturn;
   }
 
+  String? lastRecordedPlayPath;
+
+  @override
+  Future<void> recordPlay(String folderPath) async {
+    lastRecordedPlayPath = folderPath;
+  }
+
   @override
   Future<List<String>> allTags() async => tagsToReturn;
 
