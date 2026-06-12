@@ -29,18 +29,26 @@ class LibraryProvider extends ChangeNotifier {
     // Resolve the security-scoped bookmark first so iOS grants directory access.
     final bookmarkedPath = await _bookmarks.resolveBookmark();
     rootPath = bookmarkedPath ?? await _svc.getSavedRoot();
-    if (rootPath != null) await _scan();
+    if (rootPath != null) await _quickScan();
   }
 
   Future<void> pickFolder() async {
     final path = await _svc.pickLibraryFolder();
     if (path != null) {
       rootPath = path;
-      await _scan();
+      await _fullScan();
     }
   }
 
-  Future<void> _scan() async {
+  Future<void> _quickScan() async {
+    loading = true;
+    notifyListeners();
+    _releases = await _svc.quickScanLibrary(rootPath!, _releases);
+    loading = false;
+    notifyListeners();
+  }
+
+  Future<void> _fullScan() async {
     loading = true;
     notifyListeners();
     _releases = await _svc.scanLibrary(rootPath!);
@@ -49,7 +57,7 @@ class LibraryProvider extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
-    if (rootPath != null) await _scan();
+    if (rootPath != null) await _quickScan();
   }
 
   void toggleTag(String tag) {

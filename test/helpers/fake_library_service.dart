@@ -13,16 +13,23 @@ class FakeLibraryService implements LibraryService {
   String? lastRemovedTagPath;
   String? lastRemovedTag;
   int scanCallCount = 0;
+  int quickScanCallCount = 0;
 
   @override
   Future<String?> getSavedRoot() async => rootToReturn;
 
   @override
-  Future<String?> pickLibraryFolder() async => null;
+  Future<String?> pickLibraryFolder() async => rootToReturn;
 
   @override
   Future<List<Release>> scanLibrary(String rootPath) async {
     scanCallCount++;
+    return releasesToReturn;
+  }
+
+  @override
+  Future<List<Release>> quickScanLibrary(String rootPath, List<Release> existing) async {
+    quickScanCallCount++;
     return releasesToReturn;
   }
 

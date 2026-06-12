@@ -25,7 +25,7 @@ void main() {
   tearDown(() => provider.dispose());
 
   group('init', () {
-    test('sets rootPath and scans when a saved root exists', () async {
+    test('sets rootPath and quick-scans when a saved root exists', () async {
       fakeService.rootToReturn = '/music';
       fakeService.releasesToReturn = [makeRelease('Album A')];
 
@@ -34,7 +34,8 @@ void main() {
       expect(provider.rootPath, '/music');
       expect(provider.allReleases.length, 1);
       expect(provider.allReleases.first.name, 'Album A');
-      expect(fakeService.scanCallCount, 1);
+      expect(fakeService.quickScanCallCount, 1);
+      expect(fakeService.scanCallCount, 0);
     });
 
     test('leaves rootPath null and does not scan when no saved root', () async {
@@ -44,12 +45,13 @@ void main() {
 
       expect(provider.rootPath, isNull);
       expect(provider.allReleases, isEmpty);
+      expect(fakeService.quickScanCallCount, 0);
       expect(fakeService.scanCallCount, 0);
     });
   });
 
   group('refresh', () {
-    test('rescans when rootPath is set', () async {
+    test('quick-scans when rootPath is set', () async {
       fakeService.rootToReturn = '/music';
       await provider.init();
 
@@ -57,12 +59,26 @@ void main() {
       await provider.refresh();
 
       expect(provider.allReleases.first.name, 'New Album');
-      expect(fakeService.scanCallCount, 2);
+      expect(fakeService.quickScanCallCount, 2);
+      expect(fakeService.scanCallCount, 0);
     });
 
     test('is a no-op when rootPath is null', () async {
       await provider.refresh();
+      expect(fakeService.quickScanCallCount, 0);
       expect(fakeService.scanCallCount, 0);
+    });
+  });
+
+  group('pickFolder', () {
+    test('runs a full scan (not quick scan) when a folder is picked', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [makeRelease('Album A')];
+
+      await provider.pickFolder();
+
+      expect(fakeService.scanCallCount, 1);
+      expect(fakeService.quickScanCallCount, 0);
     });
   });
 

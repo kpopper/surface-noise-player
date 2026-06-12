@@ -72,6 +72,48 @@ class LibraryService {
     return releases;
   }
 
+  Future<List<Release>> quickScanLibrary(String rootPath, List<Release> existing) async {
+    final root = Directory(rootPath);
+    if (!await root.exists()) return [];
+
+    final existingByPath = {for (final r in existing) r.folderPath: r};
+    final currentPaths = <String>{};
+    final newReleases = <Release>[];
+
+    await for (final entity in root.list()) {
+      if (entity is! Directory) continue;
+      currentPaths.add(entity.path);
+      if (existingByPath.containsKey(entity.path)) continue;
+
+      final scan = await _scanFolder(entity.path);
+      if (scan.tracks.isEmpty) continue;
+
+      final tags = await _db.tagsForRelease(entity.path);
+      final firstTrackPath = scan.tracks.first.path;
+      final artPath = await _findArtFile(entity.path, firstTrackPath: firstTrackPath);
+      final folderName = entity.path.split('/').last;
+      final name = (scan.albumArtist != null && scan.albumTitle != null)
+          ? '${scan.albumArtist} - ${scan.albumTitle}'
+          : folderName;
+      newReleases.add(Release(
+        folderPath: entity.path,
+        name: name,
+        tracks: scan.tracks,
+        tags: tags,
+        artPath: artPath,
+        albumTitle: scan.albumTitle,
+        albumArtist: scan.albumArtist,
+      ));
+    }
+
+    final releases = [
+      ...existing.where((r) => currentPaths.contains(r.folderPath)),
+      ...newReleases,
+    ];
+    releases.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return releases;
+  }
+
   Future<_FolderScan> _scanFolder(String folderPath) async {
     final dir = Directory(folderPath);
     final audioFiles = <File>[];
