@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:surface_noise_player/services/database_service.dart';
 import 'package:surface_noise_player/services/library_service.dart';
+import 'package:surface_noise_player/services/metadata_service.dart';
+import '../../helpers/fake_metadata_service.dart';
 
 void main() {
   setUpAll(() {
@@ -47,12 +49,14 @@ void main() {
   group('scanLibrary', () {
     late Directory tempRoot;
     late DatabaseService dbService;
+    late FakeMetadataService fakeMetadata;
     late LibraryService service;
 
     setUp(() async {
       tempRoot = await Directory.systemTemp.createTemp('snp_test_');
       dbService = DatabaseService.forTest(inMemoryDatabasePath);
-      service = LibraryService.forTest(dbService);
+      fakeMetadata = FakeMetadataService();
+      service = LibraryService.forTest(dbService, metadata: fakeMetadata);
     });
 
     tearDown(() async {
@@ -63,6 +67,11 @@ void main() {
     Future<void> createAudioFile(Directory parent, String name) async {
       await File('${parent.path}/$name').create();
     }
+
+    test('cleans up artwork cache at the start of each scan', () async {
+      await service.scanLibrary(tempRoot.path);
+      expect(fakeMetadata.cleanupCalled, isTrue);
+    });
 
     test('returns empty list when root does not exist', () async {
       final releases = await service.scanLibrary('/nonexistent/path');
@@ -184,6 +193,29 @@ void main() {
       expect(releases.first.artPath, '${albumDir.path}/cover.jpg');
     });
 
+    test('uses embedded artwork when no image file is present', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      final trackPath = '${albumDir.path}/01.mp3';
+      await File(trackPath).create();
+      fakeMetadata = FakeMetadataService(artworkPaths: {trackPath: '/tmp/extracted.jpg'});
+      service = LibraryService.forTest(dbService, metadata: fakeMetadata);
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.artPath, '/tmp/extracted.jpg');
+    });
+
+    test('prefers image file over embedded artwork', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      final trackPath = '${albumDir.path}/01.mp3';
+      await File(trackPath).create();
+      await createAudioFile(albumDir, 'cover.jpg');
+      fakeMetadata = FakeMetadataService(artworkPaths: {trackPath: '/tmp/extracted.jpg'});
+      service = LibraryService.forTest(dbService, metadata: fakeMetadata);
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.artPath, '${albumDir.path}/cover.jpg');
+    });
+
     test('falls back to folder.jpg when no preferred name matches', () async {
       final albumDir = await Directory('${tempRoot.path}/Album').create();
       await createAudioFile(albumDir, '01.mp3');
@@ -191,6 +223,97 @@ void main() {
 
       final releases = await service.scanLibrary(tempRoot.path);
       expect(releases.first.artPath, '${albumDir.path}/folder.jpg');
+    });
+
+    test('uses metadata title when present', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      final trackPath = '${albumDir.path}/01.mp3';
+      await File(trackPath).create();
+      fakeMetadata.responses[trackPath] = const AudioMetadata(title: 'Metadata Title');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.tracks.first.title, 'Metadata Title');
+    });
+
+    test('falls back to filename title when metadata title absent', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01 - Filename Title.mp3');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.tracks.first.title, 'Filename Title');
+    });
+
+    test('uses metadata track number when present', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      final trackPath = '${albumDir.path}/track.mp3';
+      await File(trackPath).create();
+      fakeMetadata.responses[trackPath] = const AudioMetadata(trackNumber: 5);
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.tracks.first.trackNumber, 5);
+    });
+
+    test('sets track artist from metadata', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      final trackPath = '${albumDir.path}/01.mp3';
+      await File(trackPath).create();
+      fakeMetadata.responses[trackPath] = const AudioMetadata(artist: 'Track Artist');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.tracks.first.artist, 'Track Artist');
+    });
+
+    test('track artist is null when not in metadata', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.tracks.first.artist, isNull);
+    });
+
+    test('release name uses albumArtist - albumTitle from metadata', () async {
+      final albumDir = await Directory('${tempRoot.path}/Some Folder').create();
+      final trackPath = '${albumDir.path}/01.mp3';
+      await File(trackPath).create();
+      fakeMetadata.responses[trackPath] = const AudioMetadata(
+        albumArtist: 'The Artist',
+        albumTitle: 'Great Album',
+      );
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.name, 'The Artist - Great Album');
+    });
+
+    test('release name falls back to folder name when metadata absent', () async {
+      final albumDir = await Directory('${tempRoot.path}/My Folder Name').create();
+      await createAudioFile(albumDir, '01.mp3');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.name, 'My Folder Name');
+    });
+
+    test('release name falls back to folder name when only one metadata field present', () async {
+      final albumDir = await Directory('${tempRoot.path}/My Folder').create();
+      final trackPath = '${albumDir.path}/01.mp3';
+      await File(trackPath).create();
+      fakeMetadata.responses[trackPath] = const AudioMetadata(albumTitle: 'Album Only');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.name, 'My Folder');
+    });
+
+    test('stores albumTitle and albumArtist on release', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      final trackPath = '${albumDir.path}/01.mp3';
+      await File(trackPath).create();
+      fakeMetadata.responses[trackPath] = const AudioMetadata(
+        albumArtist: 'The Artist',
+        albumTitle: 'Great Album',
+      );
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.albumArtist, 'The Artist');
+      expect(releases.first.albumTitle, 'Great Album');
     });
   });
 

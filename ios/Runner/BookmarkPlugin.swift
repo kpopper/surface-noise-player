@@ -1,3 +1,4 @@
+import AVFoundation
 import Flutter
 import UIKit
 import UniformTypeIdentifiers
@@ -23,6 +24,23 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
             resolveBookmark(result: result)
         case "stopAccess":
             stopAccess()
+            result(nil)
+        case "readMetadata":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
+                return
+            }
+            readMetadata(path: path, result: result)
+        case "extractArtwork":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
+                return
+            }
+            extractArtwork(path: path, result: result)
+        case "cleanupArtworkCache":
+            cleanupArtworkCache()
             result(nil)
         default:
             result(FlutterMethodNotImplemented)
@@ -110,6 +128,100 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
             result(url.path)
         } catch {
             result(FlutterError(code: "RESOLVE_FAILED", message: error.localizedDescription, details: nil))
+        }
+    }
+
+    // MARK: - Read metadata
+
+    private func readMetadata(path: String, result: @escaping FlutterResult) {
+        let url = URL(fileURLWithPath: path)
+        let asset = AVURLAsset(url: url)
+
+        asset.loadValuesAsynchronously(forKeys: ["commonMetadata", "metadata"]) {
+            var out: [String: Any] = [:]
+
+            if asset.statusOfValue(forKey: "commonMetadata", error: nil) == .loaded {
+                for item in asset.commonMetadata {
+                    guard let key = item.commonKey else { continue }
+                    switch key {
+                    case .commonKeyTitle:     if let v = item.stringValue { out["title"] = v }
+                    case .commonKeyArtist:    if let v = item.stringValue { out["artist"] = v }
+                    case .commonKeyAlbumName: if let v = item.stringValue { out["albumTitle"] = v }
+                    default: break
+                    }
+                }
+            }
+
+            if asset.statusOfValue(forKey: "metadata", error: nil) == .loaded {
+                for item in asset.metadata {
+                    guard let id = item.identifier else { continue }
+                    switch id {
+                    case .id3MetadataBand, .iTunesMetadataAlbumArtist:
+                        if out["albumArtist"] == nil, let v = item.stringValue { out["albumArtist"] = v }
+                    case .id3MetadataTrackNumber:
+                        if out["trackNumber"] == nil, let v = item.stringValue {
+                            if let n = v.split(separator: "/").first.flatMap({ Int($0) }) { out["trackNumber"] = n }
+                        }
+                    case .iTunesMetadataTrackNumber:
+                        if out["trackNumber"] == nil {
+                            if let n = item.numberValue?.intValue, n > 0 { out["trackNumber"] = n }
+                            else if let data = item.value as? Data, data.count >= 4 {
+                                let n = Int(data[2]) * 256 + Int(data[3])
+                                if n > 0 { out["trackNumber"] = n }
+                            }
+                        }
+                    default: break
+                    }
+                }
+            }
+
+            DispatchQueue.main.async { result(out) }
+        }
+    }
+
+    // MARK: - Cleanup artwork cache
+
+    private func cleanupArtworkCache() {
+        let tempDir = NSTemporaryDirectory()
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: tempDir) else { return }
+        for file in files where file.hasPrefix("snp_art_") {
+            try? FileManager.default.removeItem(atPath: tempDir + file)
+        }
+    }
+
+    // MARK: - Extract artwork
+
+    private func extractArtwork(path: String, result: @escaping FlutterResult) {
+        let url = URL(fileURLWithPath: path)
+        let asset = AVURLAsset(url: url)
+
+        asset.loadValuesAsynchronously(forKeys: ["commonMetadata"]) {
+            guard asset.statusOfValue(forKey: "commonMetadata", error: nil) == .loaded else {
+                DispatchQueue.main.async { result(nil) }
+                return
+            }
+
+            for item in asset.commonMetadata {
+                guard item.commonKey == .commonKeyArtwork, let data = item.dataValue else { continue }
+
+                let dir = (path as NSString).deletingLastPathComponent
+                let folderName = (dir as NSString).lastPathComponent
+                let safeName = folderName
+                    .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                    .filter { !$0.isEmpty }
+                    .joined(separator: "_")
+                let tempPath = NSTemporaryDirectory() + "snp_art_\(safeName).jpg"
+
+                do {
+                    try data.write(to: URL(fileURLWithPath: tempPath))
+                    DispatchQueue.main.async { result(tempPath) }
+                } catch {
+                    DispatchQueue.main.async { result(nil) }
+                }
+                return
+            }
+
+            DispatchQueue.main.async { result(nil) }
         }
     }
 

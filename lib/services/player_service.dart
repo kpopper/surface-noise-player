@@ -38,7 +38,9 @@ class PlayerService implements AbstractPlayerService {
       tag: MediaItem(
         id: t.path,
         title: t.title,
-        album: release.name,
+        artist: t.artist ?? release.albumArtist,
+        album: release.albumTitle ?? release.name,
+        artUri: release.artPath != null ? Uri.file(release.artPath!) : null,
       ),
     )).toList();
     await player.setAudioSources(sources, initialIndex: trackIndex);

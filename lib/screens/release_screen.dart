@@ -181,6 +181,10 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                             color: isPlaying ? Colors.deepOrange : null,
                           ),
                         ),
+                        subtitle: track.artist != null
+                            ? Text(track.artist!,
+                                style: const TextStyle(fontSize: 12))
+                            : null,
                         onTap: () => _playerSvc.playTrack(_release, i),
                       );
                     }),

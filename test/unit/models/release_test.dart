@@ -20,6 +20,16 @@ void main() {
       const track = Track(path: '/a.mp3', title: 'A', trackNumber: 1);
       expect(track.duration, isNull);
     });
+
+    test('artist defaults to null', () {
+      const track = Track(path: '/a.mp3', title: 'A', trackNumber: 1);
+      expect(track.artist, isNull);
+    });
+
+    test('stores artist when provided', () {
+      const track = Track(path: '/a.mp3', title: 'A', trackNumber: 1, artist: 'The Artist');
+      expect(track.artist, 'The Artist');
+    });
   });
 
   group('Release', () {
@@ -84,6 +94,38 @@ void main() {
     test('copyWith produces a new object', () {
       final updated = release.copyWith(tags: ['rock']);
       expect(identical(updated, release), isFalse);
+    });
+
+    test('albumTitle and albumArtist default to null', () {
+      expect(release.albumTitle, isNull);
+      expect(release.albumArtist, isNull);
+    });
+
+    test('stores albumTitle and albumArtist when provided', () {
+      const r = Release(
+        folderPath: '/music/album',
+        name: 'Artist - Album',
+        tracks: [],
+        tags: [],
+        albumTitle: 'Great Album',
+        albumArtist: 'Great Artist',
+      );
+      expect(r.albumTitle, 'Great Album');
+      expect(r.albumArtist, 'Great Artist');
+    });
+
+    test('copyWith preserves albumTitle and albumArtist', () {
+      const r = Release(
+        folderPath: '/music/album',
+        name: 'Artist - Album',
+        tracks: [],
+        tags: ['jazz'],
+        albumTitle: 'Great Album',
+        albumArtist: 'Great Artist',
+      );
+      final updated = r.copyWith(tags: ['rock']);
+      expect(updated.albumTitle, 'Great Album');
+      expect(updated.albumArtist, 'Great Artist');
     });
   });
 }
