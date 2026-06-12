@@ -2,15 +2,15 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Surface Noise (debug)",
-      "request": "launch",
-      "type": "dart"
-    },
-    {
       "name": "Surface Noise (release)",
       "request": "launch",
       "type": "dart",
       "flutterMode": "release"
+    },
+    {
+      "name": "Surface Noise (debug)",
+      "request": "launch",
+      "type": "dart"
     }
   ]
 }
