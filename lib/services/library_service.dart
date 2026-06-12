@@ -42,6 +42,7 @@ class LibraryService {
     final root = Directory(rootPath);
     if (!await root.exists()) return [];
 
+    final activities = await _db.allLastActivities();
     final releases = <Release>[];
 
     await for (final entity in root.list()) {
@@ -49,7 +50,7 @@ class LibraryService {
         final scan = await _scanFolder(entity.path);
         if (scan.tracks.isNotEmpty) {
           final tags = await _db.tagsForRelease(entity.path);
-          final firstTrackPath = scan.tracks.isNotEmpty ? scan.tracks.first.path : null;
+          final firstTrackPath = scan.tracks.first.path;
           final artPath = await _findArtFile(entity.path, firstTrackPath: firstTrackPath);
           final folderName = entity.path.split('/').last;
           final name = (scan.albumArtist != null && scan.albumTitle != null)
@@ -63,12 +64,12 @@ class LibraryService {
             artPath: artPath,
             albumTitle: scan.albumTitle,
             albumArtist: scan.albumArtist,
+            lastActivityAt: activities[entity.path],
           ));
         }
       }
     }
 
-    releases.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return releases;
   }
 
@@ -88,6 +89,9 @@ class LibraryService {
       final scan = await _scanFolder(entity.path);
       if (scan.tracks.isEmpty) continue;
 
+      final now = DateTime.now();
+      await _db.setLastActivity(entity.path, now);
+
       final tags = await _db.tagsForRelease(entity.path);
       final firstTrackPath = scan.tracks.first.path;
       final artPath = await _findArtFile(entity.path, firstTrackPath: firstTrackPath);
@@ -103,16 +107,17 @@ class LibraryService {
         artPath: artPath,
         albumTitle: scan.albumTitle,
         albumArtist: scan.albumArtist,
+        lastActivityAt: now,
       ));
     }
 
-    final releases = [
+    return [
       ...existing.where((r) => currentPaths.contains(r.folderPath)),
       ...newReleases,
     ];
-    releases.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return releases;
   }
+
+  Future<void> recordPlay(String folderPath) => _db.setLastActivity(folderPath, DateTime.now());
 
   Future<_FolderScan> _scanFolder(String folderPath) async {
     final dir = Directory(folderPath);

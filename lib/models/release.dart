@@ -22,6 +22,7 @@ class Release {
   final String? artPath;
   final String? albumTitle;
   final String? albumArtist;
+  final DateTime? lastActivityAt;
 
   const Release({
     required this.folderPath,
@@ -31,9 +32,10 @@ class Release {
     this.artPath,
     this.albumTitle,
     this.albumArtist,
+    this.lastActivityAt,
   });
 
-  Release copyWith({List<String>? tags}) => Release(
+  Release copyWith({List<String>? tags, DateTime? lastActivityAt}) => Release(
         folderPath: folderPath,
         name: name,
         tracks: tracks,
@@ -41,5 +43,6 @@ class Release {
         artPath: artPath,
         albumTitle: albumTitle,
         albumArtist: albumArtist,
+        lastActivityAt: lastActivityAt ?? this.lastActivityAt,
       );
 }

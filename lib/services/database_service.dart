@@ -28,7 +28,7 @@ class DatabaseService {
     final resolvedPath = _overridePath ?? join(await getDatabasesPath(), 'surface_noise.db');
     return openDatabase(
       resolvedPath,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE tags (
@@ -43,6 +43,22 @@ class DatabaseService {
             path TEXT NOT NULL
           )
         ''');
+        await db.execute('''
+          CREATE TABLE release_activity (
+            folder_path TEXT PRIMARY KEY,
+            last_activity_at INTEGER NOT NULL
+          )
+        ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('''
+            CREATE TABLE release_activity (
+              folder_path TEXT PRIMARY KEY,
+              last_activity_at INTEGER NOT NULL
+            )
+          ''');
+        }
       },
     );
   }
@@ -93,5 +109,24 @@ class DatabaseService {
     final d = await db;
     await d.delete('library_root');
     await d.insert('library_root', {'path': path});
+  }
+
+  Future<void> setLastActivity(String folderPath, DateTime time) async {
+    final d = await db;
+    await d.insert(
+      'release_activity',
+      {'folder_path': folderPath, 'last_activity_at': time.millisecondsSinceEpoch},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, DateTime>> allLastActivities() async {
+    final d = await db;
+    final rows = await d.query('release_activity');
+    return {
+      for (final r in rows)
+        r['folder_path'] as String:
+            DateTime.fromMillisecondsSinceEpoch(r['last_activity_at'] as int),
+    };
   }
 }

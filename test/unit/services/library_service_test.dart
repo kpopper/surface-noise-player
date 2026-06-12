@@ -74,6 +74,24 @@ void main() {
       expect(fakeMetadata.cleanupCalled, isTrue);
     });
 
+    test('populates lastActivityAt from database when present', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      final t = DateTime(2025, 6, 1, 12, 0, 0);
+      await dbService.setLastActivity(albumDir.path, t);
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.lastActivityAt, t);
+    });
+
+    test('lastActivityAt is null when not in database', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.lastActivityAt, isNull);
+    });
+
     test('returns empty list when root does not exist', () async {
       final releases = await service.scanLibrary('/nonexistent/path');
       expect(releases, isEmpty);
@@ -120,16 +138,14 @@ void main() {
       expect(trackNumbers, [1, 2]);
     });
 
-    test('sorts releases alphabetically by name', () async {
+    test('returns all releases (order is not guaranteed)', () async {
       await Directory('${tempRoot.path}/Zebra').create()
           .then((d) => createAudioFile(d, 'a.mp3'));
       await Directory('${tempRoot.path}/Apple').create()
           .then((d) => createAudioFile(d, 'a.mp3'));
-      await Directory('${tempRoot.path}/Mango').create()
-          .then((d) => createAudioFile(d, 'a.mp3'));
 
       final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.map((r) => r.name).toList(), ['Apple', 'Mango', 'Zebra']);
+      expect(releases.map((r) => r.name), containsAll(['Apple', 'Zebra']));
     });
 
     test('attaches saved tags to a release', () async {
@@ -405,16 +421,33 @@ void main() {
       expect(releases.map((r) => r.name), isNot(contains('Gone')));
     });
 
-    test('sorts result alphabetically', () async {
+    test('returns all expected releases (order is not guaranteed)', () async {
       final zDir = await Directory('${tempRoot.path}/Zebra').create();
       await createAudioFile(zDir, '01.mp3');
       final aDir = await Directory('${tempRoot.path}/Apple').create();
       await createAudioFile(aDir, '01.mp3');
-      final mDir = await Directory('${tempRoot.path}/Mango').create();
-      await createAudioFile(mDir, '01.mp3');
 
       final releases = await service.quickScanLibrary(tempRoot.path, []);
-      expect(releases.map((r) => r.name).toList(), ['Apple', 'Mango', 'Zebra']);
+      expect(releases.map((r) => r.name), containsAll(['Zebra', 'Apple']));
+    });
+
+    test('sets lastActivityAt on newly discovered folders', () async {
+      final albumDir = await Directory('${tempRoot.path}/New Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+
+      final before = DateTime.now().subtract(const Duration(seconds: 1));
+      final releases = await service.quickScanLibrary(tempRoot.path, []);
+      expect(releases.first.lastActivityAt, isNotNull);
+      expect(releases.first.lastActivityAt!.isAfter(before), isTrue);
+    });
+
+    test('persists lastActivityAt to database for new folders', () async {
+      final albumDir = await Directory('${tempRoot.path}/New Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+
+      await service.quickScanLibrary(tempRoot.path, []);
+      final activities = await dbService.allLastActivities();
+      expect(activities[albumDir.path], isNotNull);
     });
 
     test('does not clean up artwork cache', () async {

@@ -89,4 +89,38 @@ void main() {
       expect(await db.savedLibraryRoot(), '/new/path');
     });
   });
+
+  group('release activity', () {
+    const path = '/music/album';
+
+    test('allLastActivities returns empty map when nothing recorded', () async {
+      expect(await db.allLastActivities(), isEmpty);
+    });
+
+    test('setLastActivity persists a timestamp', () async {
+      final t = DateTime(2025, 6, 1, 12, 0, 0);
+      await db.setLastActivity(path, t);
+      final activities = await db.allLastActivities();
+      expect(activities[path], t);
+    });
+
+    test('setLastActivity overwrites an existing timestamp', () async {
+      final older = DateTime(2025, 1, 1);
+      final newer = DateTime(2025, 6, 1);
+      await db.setLastActivity(path, older);
+      await db.setLastActivity(path, newer);
+      final activities = await db.allLastActivities();
+      expect(activities[path], newer);
+    });
+
+    test('allLastActivities returns entries for multiple paths', () async {
+      final t1 = DateTime(2025, 1, 1);
+      final t2 = DateTime(2025, 6, 1);
+      await db.setLastActivity('/album/a', t1);
+      await db.setLastActivity('/album/b', t2);
+      final activities = await db.allLastActivities();
+      expect(activities['/album/a'], t1);
+      expect(activities['/album/b'], t2);
+    });
+  });
 }
