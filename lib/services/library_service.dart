@@ -5,6 +5,8 @@ import 'bookmark_service.dart';
 import 'database_service.dart';
 
 const _audioExtensions = {'.mp3', '.flac', '.aac', '.m4a', '.wav', '.ogg', '.opus', '.aiff'};
+const _preferredArtFilenames = ['cover.jpg', 'folder.jpg', 'artwork.jpg', 'front.jpg'];
+const _artExtensions = {'.jpg', '.jpeg', '.png'};
 
 class LibraryService {
   static LibraryService? _instance;
@@ -37,11 +39,13 @@ class LibraryService {
         final tracks = await _tracksInFolder(entity.path);
         if (tracks.isNotEmpty) {
           final tags = await _db.tagsForRelease(entity.path);
+          final artPath = await _findArtFile(entity.path);
           releases.add(Release(
             folderPath: entity.path,
             name: entity.path.split('/').last,
             tracks: tracks,
             tags: tags,
+            artPath: artPath,
           ));
         }
       }
@@ -72,6 +76,20 @@ class LibraryService {
       final title = LibraryService._cleanTitle(filename);
       return Track(path: file.path, title: title, trackNumber: i + 1);
     }).toList();
+  }
+
+  Future<String?> _findArtFile(String folderPath) async {
+    for (final name in _preferredArtFilenames) {
+      final f = File('$folderPath/$name');
+      if (await f.exists()) return f.path;
+    }
+    final dir = Directory(folderPath);
+    await for (final entity in dir.list()) {
+      if (entity is File && _artExtensions.any(entity.path.toLowerCase().endsWith)) {
+        return entity.path;
+      }
+    }
+    return null;
   }
 
   @visibleForTesting

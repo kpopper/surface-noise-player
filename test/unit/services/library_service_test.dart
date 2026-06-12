@@ -156,6 +156,42 @@ void main() {
       final releases = await service.scanLibrary(tempRoot.path);
       expect(releases.first.tracks.length, 1);
     });
+
+    test('sets artPath to cover.jpg when present', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      await createAudioFile(albumDir, 'cover.jpg');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.artPath, '${albumDir.path}/cover.jpg');
+    });
+
+    test('artPath is null when no image file present', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.artPath, isNull);
+    });
+
+    test('prefers cover.jpg over folder.jpg', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      await createAudioFile(albumDir, 'folder.jpg');
+      await createAudioFile(albumDir, 'cover.jpg');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.artPath, '${albumDir.path}/cover.jpg');
+    });
+
+    test('falls back to folder.jpg when no preferred name matches', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      await createAudioFile(albumDir, 'folder.jpg');
+
+      final releases = await service.scanLibrary(tempRoot.path);
+      expect(releases.first.artPath, '${albumDir.path}/folder.jpg');
+    });
   });
 
   group('tag delegation', () {

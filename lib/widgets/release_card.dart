@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/release.dart';
+import 'art_thumbnail.dart';
 
 class ReleaseCard extends StatelessWidget {
   final Release release;
@@ -10,6 +11,7 @@ class ReleaseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      leading: ArtThumbnail(artPath: release.artPath, size: 48),
       title: Text(release.name),
       subtitle: release.tags.isNotEmpty
           ? Wrap(

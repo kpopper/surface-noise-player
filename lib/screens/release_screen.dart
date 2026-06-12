@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
@@ -120,31 +121,6 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
       appBar: AppBar(title: Text(_release.name)),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                      ..._release.tags.map((t) => TagChip(
-                        label: t,
-                        onDeleted: () => _removeTag(t),
-                      )),
-                      ActionChip(
-                        avatar: const Icon(Icons.add, size: 16),
-                        label: const Text('Add tag'),
-                        onPressed: _showAddTagDialog,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(),
           Expanded(
             child: StreamBuilder<SequenceState?>(
               stream: _playerSvc.sequenceStateStream,
@@ -154,28 +130,61 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                     : null;
                 final isThisRelease = _playerSvc.currentRelease?.folderPath == _release.folderPath;
 
-                return ListView.builder(
-                  itemCount: _release.tracks.length,
-                  itemBuilder: (context, i) {
-                    final track = _release.tracks[i];
-                    final isPlaying = isThisRelease && currentPath == track.path;
-                    return ListTile(
-                      leading: isPlaying
-                          ? const Icon(Icons.equalizer, color: Colors.deepOrange)
-                          : Text(
-                              '${track.trackNumber}',
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                      title: Text(
-                        track.title,
-                        style: TextStyle(
-                          fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-                          color: isPlaying ? Colors.deepOrange : null,
-                        ),
+                return ListView(
+                  children: [
+                    if (_release.artPath != null)
+                      Image.file(
+                        File(_release.artPath!),
+                        width: double.infinity,
+                        fit: BoxFit.fitWidth,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                       ),
-                      onTap: () => _playerSvc.playTrack(_release, i),
-                    );
-                  },
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: [
+                                ..._release.tags.map((t) => TagChip(
+                                  label: t,
+                                  onDeleted: () => _removeTag(t),
+                                )),
+                                ActionChip(
+                                  avatar: const Icon(Icons.add, size: 16),
+                                  label: const Text('Add tag'),
+                                  onPressed: _showAddTagDialog,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(),
+                    ...List.generate(_release.tracks.length, (i) {
+                      final track = _release.tracks[i];
+                      final isPlaying = isThisRelease && currentPath == track.path;
+                      return ListTile(
+                        leading: isPlaying
+                            ? const Icon(Icons.equalizer, color: Colors.deepOrange)
+                            : Text(
+                                '${track.trackNumber}',
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                        title: Text(
+                          track.title,
+                          style: TextStyle(
+                            fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+                            color: isPlaying ? Colors.deepOrange : null,
+                          ),
+                        ),
+                        onTap: () => _playerSvc.playTrack(_release, i),
+                      );
+                    }),
+                  ],
                 );
               },
             ),

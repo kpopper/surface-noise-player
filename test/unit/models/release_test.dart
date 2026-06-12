@@ -41,6 +41,33 @@ void main() {
       expect(release.tags, ['jazz', 'vinyl']);
     });
 
+    test('artPath defaults to null', () {
+      expect(release.artPath, isNull);
+    });
+
+    test('stores artPath when provided', () {
+      const r = Release(
+        folderPath: '/music/album',
+        name: 'My Album',
+        tracks: [],
+        tags: [],
+        artPath: '/music/album/cover.jpg',
+      );
+      expect(r.artPath, '/music/album/cover.jpg');
+    });
+
+    test('copyWith preserves artPath', () {
+      const r = Release(
+        folderPath: '/music/album',
+        name: 'My Album',
+        tracks: [],
+        tags: ['jazz'],
+        artPath: '/music/album/cover.jpg',
+      );
+      final updated = r.copyWith(tags: ['rock']);
+      expect(updated.artPath, '/music/album/cover.jpg');
+    });
+
     test('copyWith replaces tags', () {
       final updated = release.copyWith(tags: ['electronic']);
       expect(updated.tags, ['electronic']);

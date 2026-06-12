@@ -3,6 +3,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import '../services/abstract_player_service.dart';
 import '../services/player_service.dart';
+import 'art_thumbnail.dart';
 
 class MiniPlayer extends StatelessWidget {
   final AbstractPlayerService? playerService;
@@ -29,6 +30,8 @@ class MiniPlayer extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
+              ArtThumbnail(artPath: svc.currentRelease?.artPath, size: 40),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
