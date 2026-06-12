@@ -11,7 +11,7 @@ writing a feature; remove or update it when behaviour changes.
 - Each direct subfolder of the selected root that contains at least one audio file is treated as a release
 - Files directly in the root (not in a subfolder) are ignored
 - A subfolder with no audio files is ignored
-- Recognised audio formats: `.mp3` `.flac` `.aac` `.m4a` `.wav` `.ogg` `.opus` `.aiff`
+- Recognised audio formats: `.mp3` `.flac` `.aac` `.m4a` `.wav` `.ogg` `.opus` `.aiff` `.aif`
 - Non-audio files inside a release folder (e.g. cover art, text files) are ignored
 - Releases are sorted alphabetically by name, case-insensitive
 - Tracks within a release are numbered starting from 1

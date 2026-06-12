@@ -5,7 +5,7 @@ import 'bookmark_service.dart';
 import 'database_service.dart';
 import 'metadata_service.dart';
 
-const _audioExtensions = {'.mp3', '.flac', '.aac', '.m4a', '.wav', '.ogg', '.opus', '.aiff'};
+const _audioExtensions = {'.mp3', '.flac', '.aac', '.m4a', '.wav', '.ogg', '.opus', '.aiff', '.aif'};
 const _preferredArtFilenames = ['cover.jpg', 'folder.jpg', 'artwork.jpg', 'front.jpg'];
 const _artExtensions = {'.jpg', '.jpeg', '.png'};
 
