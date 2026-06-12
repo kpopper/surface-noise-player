@@ -40,6 +40,7 @@ class PlayerService implements AbstractPlayerService {
         title: t.title,
         artist: t.artist ?? release.albumArtist,
         album: release.albumTitle ?? release.name,
+        artUri: release.artPath != null ? Uri.file(release.artPath!) : null,
       ),
     )).toList();
     await player.setAudioSources(sources, initialIndex: trackIndex);

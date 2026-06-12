@@ -55,6 +55,7 @@ writing a feature; remove or update it when behaviour changes.
 - When both album artist and album title are present, the release name is displayed as "{albumArtist} - {albumTitle}"
 - When metadata is absent, the release name falls back to the folder name
 - Track artist is shown alongside the track title in the release screen track list
+- Album artwork is shown on the lock screen and in the Now Playing controls
 
 ## Release data
 
