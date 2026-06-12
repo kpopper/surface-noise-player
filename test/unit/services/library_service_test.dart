@@ -149,11 +149,11 @@ void main() {
 
     test('recognises all supported audio extensions', () async {
       final albumDir = await Directory('${tempRoot.path}/Album').create();
-      for (final ext in ['.mp3', '.flac', '.aac', '.m4a', '.wav', '.ogg', '.opus', '.aiff']) {
+      for (final ext in ['.mp3', '.flac', '.aac', '.m4a', '.wav', '.ogg', '.opus', '.aiff', '.aif']) {
         await createAudioFile(albumDir, 'track$ext');
       }
       final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.tracks.length, 8);
+      expect(releases.first.tracks.length, 9);
     });
 
     test('ignores non-audio files', () async {
