@@ -5,10 +5,13 @@ abstract class AbstractPlayerService {
   Release? get currentRelease;
   Stream<SequenceState?> get sequenceStateStream;
   Stream<PlayerState> get playerStateStream;
+  Stream<Duration> get positionStream;
+  Stream<Duration?> get durationStream;
   bool get hasPrevious;
   bool get hasNext;
   Future<void> seekToPrevious();
   Future<void> seekToNext();
+  Future<void> seek(Duration position);
   Future<void> play();
   Future<void> pause();
   Future<void> playRelease(Release release, {int trackIndex = 0});

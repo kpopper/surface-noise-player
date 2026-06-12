@@ -7,6 +7,8 @@ class FakePlayerService implements AbstractPlayerService {
   final _sequenceStateController =
       StreamController<SequenceState?>.broadcast();
   final _playerStateController = StreamController<PlayerState>.broadcast();
+  final _positionController = StreamController<Duration>.broadcast();
+  final _durationController = StreamController<Duration?>.broadcast();
 
   @override
   Release? currentRelease;
@@ -22,6 +24,7 @@ class FakePlayerService implements AbstractPlayerService {
   bool pauseCalled = false;
   Release? lastPlayedRelease;
   int? lastPlayedTrackIndex;
+  Duration? seekedTo;
 
   @override
   Stream<SequenceState?> get sequenceStateStream =>
@@ -29,6 +32,12 @@ class FakePlayerService implements AbstractPlayerService {
 
   @override
   Stream<PlayerState> get playerStateStream => _playerStateController.stream;
+
+  @override
+  Stream<Duration> get positionStream => _positionController.stream;
+
+  @override
+  Stream<Duration?> get durationStream => _durationController.stream;
 
   @override
   Future<void> play() async => playCalled = true;
@@ -41,6 +50,9 @@ class FakePlayerService implements AbstractPlayerService {
 
   @override
   Future<void> seekToNext() async {}
+
+  @override
+  Future<void> seek(Duration position) async => seekedTo = position;
 
   @override
   Future<void> playRelease(Release release, {int trackIndex = 0}) async {
@@ -60,5 +72,7 @@ class FakePlayerService implements AbstractPlayerService {
   void dispose() {
     _sequenceStateController.close();
     _playerStateController.close();
+    _positionController.close();
+    _durationController.close();
   }
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
-import 'screens/library_screen.dart';
+import 'screens/app_shell.dart';
 import 'services/library_provider.dart';
 
 Future<void> main() async {
@@ -40,7 +40,7 @@ class SurfaceNoiseApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const LibraryScreen(),
+      home: const AppShell(),
     );
   }
 }
