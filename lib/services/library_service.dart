@@ -3,20 +3,28 @@ import 'package:flutter/foundation.dart';
 import '../models/release.dart';
 import 'bookmark_service.dart';
 import 'database_service.dart';
+import 'metadata_service.dart';
 
 const _audioExtensions = {'.mp3', '.flac', '.aac', '.m4a', '.wav', '.ogg', '.opus', '.aiff'};
 const _preferredArtFilenames = ['cover.jpg', 'folder.jpg', 'artwork.jpg', 'front.jpg'];
 const _artExtensions = {'.jpg', '.jpeg', '.png'};
 
+typedef _FolderScan = ({List<Track> tracks, String? albumArtist, String? albumTitle});
+
 class LibraryService {
   static LibraryService? _instance;
   final DatabaseService _db;
+  final MetadataService _metadata;
 
-  LibraryService._([DatabaseService? db]) : _db = db ?? DatabaseService.instance;
+  LibraryService._([DatabaseService? db, MetadataService? metadata])
+      : _db = db ?? DatabaseService.instance,
+        _metadata = metadata ?? MetadataService.instance;
+
   static LibraryService get instance => _instance ??= LibraryService._();
 
   @visibleForTesting
-  factory LibraryService.forTest(DatabaseService db) => LibraryService._(db);
+  factory LibraryService.forTest(DatabaseService db, {MetadataService? metadata}) =>
+      LibraryService._(db, metadata);
 
   Future<String?> pickLibraryFolder() async {
     final path = await BookmarkService.instance.pickFolder();
@@ -36,16 +44,22 @@ class LibraryService {
 
     await for (final entity in root.list()) {
       if (entity is Directory) {
-        final tracks = await _tracksInFolder(entity.path);
-        if (tracks.isNotEmpty) {
+        final scan = await _scanFolder(entity.path);
+        if (scan.tracks.isNotEmpty) {
           final tags = await _db.tagsForRelease(entity.path);
           final artPath = await _findArtFile(entity.path);
+          final folderName = entity.path.split('/').last;
+          final name = (scan.albumArtist != null && scan.albumTitle != null)
+              ? '${scan.albumArtist} - ${scan.albumTitle}'
+              : folderName;
           releases.add(Release(
             folderPath: entity.path,
-            name: entity.path.split('/').last,
-            tracks: tracks,
+            name: name,
+            tracks: scan.tracks,
             tags: tags,
             artPath: artPath,
+            albumTitle: scan.albumTitle,
+            albumArtist: scan.albumArtist,
           ));
         }
       }
@@ -55,27 +69,42 @@ class LibraryService {
     return releases;
   }
 
-  Future<List<Track>> _tracksInFolder(String folderPath) async {
+  Future<_FolderScan> _scanFolder(String folderPath) async {
     final dir = Directory(folderPath);
-    final files = <FileSystemEntity>[];
+    final audioFiles = <File>[];
 
     await for (final entity in dir.list()) {
-      if (entity is File) {
-        final ext = entity.path.toLowerCase();
-        if (_audioExtensions.any(ext.endsWith)) {
-          files.add(entity);
-        }
+      if (entity is File && _audioExtensions.any(entity.path.toLowerCase().endsWith)) {
+        audioFiles.add(entity);
       }
     }
 
-    files.sort((a, b) => a.path.compareTo(b.path));
+    audioFiles.sort((a, b) => a.path.compareTo(b.path));
 
-    return files.indexed.map((entry) {
-      final (i, file) = entry;
+    String? albumArtist;
+    String? albumTitle;
+    final tracks = <Track>[];
+
+    for (var i = 0; i < audioFiles.length; i++) {
+      final file = audioFiles[i];
       final filename = file.path.split('/').last;
-      final title = LibraryService._cleanTitle(filename);
-      return Track(path: file.path, title: title, trackNumber: i + 1);
-    }).toList();
+      final meta = await _metadata.readMetadata(file.path);
+
+      if (i == 0) {
+        albumArtist = meta.albumArtist?.isNotEmpty == true ? meta.albumArtist : null;
+        albumTitle = meta.albumTitle?.isNotEmpty == true ? meta.albumTitle : null;
+      }
+
+      tracks.add(Track(
+        path: file.path,
+        title: meta.title?.isNotEmpty == true ? meta.title! : _cleanTitle(filename),
+        trackNumber: meta.trackNumber ?? (i + 1),
+        artist: meta.artist?.isNotEmpty == true ? meta.artist : null,
+      ));
+    }
+
+    tracks.sort((a, b) => a.trackNumber.compareTo(b.trackNumber));
+    return (tracks: tracks, albumArtist: albumArtist, albumTitle: albumTitle);
   }
 
   Future<String?> _findArtFile(String folderPath) async {

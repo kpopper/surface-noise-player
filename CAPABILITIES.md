@@ -46,11 +46,20 @@ writing a feature; remove or update it when behaviour changes.
 - The release screen shows the cover art as a full-width header above the track list
 - The mini player shows a small thumbnail next to the track and album name
 
+## Audio metadata
+
+- Track title, track number, and track artist are read from each file's embedded metadata tags (ID3, FLAC, M4A, etc.)
+- If a file has no metadata, track title falls back to filename parsing and track number falls back to alphabetical file order
+- Album title and album artist are read from the first track's metadata
+- When both album artist and album title are present, the release name is displayed as "{albumArtist} - {albumTitle}"
+- When metadata is absent, the release name falls back to the folder name
+- Track artist is shown alongside the track title in the release screen track list
+
 ## Release data
 
-- A release has a folder path, a name, a list of tracks, a list of tags, and an optional art path
-- Copying a release with new tags preserves the folder path, name, tracks, and art path
-- A track has a file path, a title, a track number, and an optional duration
+- A release has a folder path, a name, a list of tracks, a list of tags, an optional art path, an optional album title, and an optional album artist
+- Copying a release with new tags preserves all other fields
+- A track has a file path, a title, a track number, an optional duration, and an optional artist
 
 ## Library screen
 
