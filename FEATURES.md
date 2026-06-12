@@ -6,6 +6,7 @@
 - [ ] Search — filter releases by name on the library screen
 - [ ] Sorting — sort library by name, recently added, etc.
 - [ ] iCloud placeholder handling — detect undownloaded `.icloud` files and show a download prompt
+- [ ] Add a quick scan that looks for new releases and adds them without re-scanning the full directory
 
 ## Completed
 

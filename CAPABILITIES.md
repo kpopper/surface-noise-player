@@ -63,6 +63,21 @@ writing a feature; remove or update it when behaviour changes.
 - Copying a release with new tags preserves all other fields
 - A track has a file path, a title, a track number, an optional duration, and an optional artist
 
+## Mini player
+
+- Visible at the bottom of every screen whenever something is playing
+- Shows current track title, album, and art thumbnail
+- Provides play/pause and skip controls
+- Tapping it opens the Now Playing screen
+
+## Now Playing screen
+
+- Opens full-screen from the mini player
+- Shows full-size album art, release name, track title, and artist
+- Progress bar showing current position, scrubbable to seek
+- Play/pause, previous, and next controls
+- Dismissed by tapping the close button or swiping down
+
 ## Library screen
 
 - When no folder has been selected, an empty-state prompt is shown

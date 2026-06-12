@@ -18,6 +18,10 @@ class PlayerService implements AbstractPlayerService {
   @override
   Stream<PlayerState> get playerStateStream => player.playerStateStream;
   @override
+  Stream<Duration> get positionStream => player.positionStream;
+  @override
+  Stream<Duration?> get durationStream => player.durationStream;
+  @override
   bool get hasPrevious => player.hasPrevious;
   @override
   bool get hasNext => player.hasNext;
@@ -25,6 +29,8 @@ class PlayerService implements AbstractPlayerService {
   Future<void> seekToPrevious() => player.seekToPrevious();
   @override
   Future<void> seekToNext() => player.seekToNext();
+  @override
+  Future<void> seek(Duration position) => player.seek(position);
   @override
   Future<void> play() => player.play();
   @override

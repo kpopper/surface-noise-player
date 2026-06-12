@@ -7,7 +7,9 @@ import 'art_thumbnail.dart';
 
 class MiniPlayer extends StatelessWidget {
   final AbstractPlayerService? playerService;
-  const MiniPlayer({super.key, this.playerService});
+  final VoidCallback? onTap;
+
+  const MiniPlayer({super.key, this.playerService, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -33,20 +35,24 @@ class MiniPlayer extends StatelessWidget {
               ArtThumbnail(artPath: svc.currentRelease?.artPath, size: 40),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(item.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    if (item.album != null)
-                      Text(item.album!,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onTap,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(item.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      if (item.album != null)
+                        Text(item.album!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
                 ),
               ),
               StreamBuilder<PlayerState>(

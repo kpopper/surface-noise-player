@@ -7,7 +7,6 @@ import '../models/release.dart';
 import '../services/abstract_player_service.dart';
 import '../services/library_provider.dart';
 import '../services/player_service.dart';
-import '../widgets/mini_player.dart';
 import '../widgets/tag_chip.dart';
 
 class ReleaseScreen extends StatefulWidget {
@@ -206,7 +205,6 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: MiniPlayer(playerService: _playerSvc),
     );
   }
 }
