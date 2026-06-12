@@ -450,6 +450,21 @@ void main() {
       expect(activities[albumDir.path], isNotNull);
     });
 
+    test('preserves existing DB timestamp on app restart (existing not in memory)', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      final original = DateTime(2025, 1, 1, 12, 0, 0);
+      await dbService.setLastActivity(albumDir.path, original);
+
+      // Simulate app restart: existing = [] but DB already has the activity
+      final releases = await service.quickScanLibrary(tempRoot.path, []);
+      expect(releases.first.lastActivityAt, original);
+
+      // DB timestamp should not have been overwritten
+      final activities = await dbService.allLastActivities();
+      expect(activities[albumDir.path], original);
+    });
+
     test('does not clean up artwork cache', () async {
       await service.quickScanLibrary(tempRoot.path, []);
       expect(fakeMetadata.cleanupCalled, isFalse);

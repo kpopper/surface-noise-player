@@ -78,6 +78,7 @@ class LibraryService {
     if (!await root.exists()) return [];
 
     final existingByPath = {for (final r in existing) r.folderPath: r};
+    final knownActivities = await _db.allLastActivities();
     final currentPaths = <String>{};
     final newReleases = <Release>[];
 
@@ -89,8 +90,18 @@ class LibraryService {
       final scan = await _scanFolder(entity.path);
       if (scan.tracks.isEmpty) continue;
 
-      final now = DateTime.now();
-      await _db.setLastActivity(entity.path, now);
+      // Only assign a new timestamp if the folder has never been seen before.
+      // Folders known from a previous session (in DB but not in memory) keep
+      // their existing timestamp so play history is not overwritten on restart.
+      final existingActivity = knownActivities[entity.path];
+      final DateTime? lastActivityAt;
+      if (existingActivity == null) {
+        final now = DateTime.now();
+        await _db.setLastActivity(entity.path, now);
+        lastActivityAt = now;
+      } else {
+        lastActivityAt = existingActivity;
+      }
 
       final tags = await _db.tagsForRelease(entity.path);
       final firstTrackPath = scan.tracks.first.path;
@@ -107,7 +118,7 @@ class LibraryService {
         artPath: artPath,
         albumTitle: scan.albumTitle,
         albumArtist: scan.albumArtist,
-        lastActivityAt: now,
+        lastActivityAt: lastActivityAt,
       ));
     }
 
