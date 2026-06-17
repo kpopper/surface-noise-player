@@ -15,6 +15,11 @@ class LibraryProvider extends ChangeNotifier {
   bool loading = false;
   String? rootPath;
 
+  // Serialise scans: each scan waits for the previous one to finish before
+  // starting. Prevents interleaving when the user triggers a full scan while
+  // an automatic quick scan is still running on a large library.
+  Future<void> _scanChain = Future.value();
+
   List<Release> get releases {
     if (_activeTags.isEmpty) return _releases;
     return _releases
@@ -29,18 +34,27 @@ class LibraryProvider extends ChangeNotifier {
     // Resolve the security-scoped bookmark first so iOS grants directory access.
     final bookmarkedPath = await _bookmarks.resolveBookmark();
     rootPath = bookmarkedPath ?? await _svc.getSavedRoot();
-    if (rootPath != null) await _quickScan();
+    if (rootPath != null) await _enqueue(_doQuickScan);
   }
 
   Future<void> pickFolder() async {
     final path = await _svc.pickLibraryFolder();
     if (path != null) {
       rootPath = path;
-      await _fullScan();
+      await _enqueue(_doFullScan);
     }
   }
 
-  Future<void> _quickScan() async {
+  Future<void> refresh() async {
+    if (rootPath != null) await _enqueue(_doQuickScan);
+  }
+
+  Future<void> _enqueue(Future<void> Function() scan) {
+    _scanChain = _scanChain.then((_) => scan()).catchError((_) {});
+    return _scanChain;
+  }
+
+  Future<void> _doQuickScan() async {
     loading = true;
     notifyListeners();
     _releases = await _svc.quickScanLibrary(rootPath!, _releases);
@@ -49,17 +63,13 @@ class LibraryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _fullScan() async {
+  Future<void> _doFullScan() async {
     loading = true;
     notifyListeners();
     _releases = await _svc.scanLibrary(rootPath!);
     _sortByActivity(_releases);
     loading = false;
     notifyListeners();
-  }
-
-  Future<void> refresh() async {
-    if (rootPath != null) await _quickScan();
   }
 
   Future<void> recordPlay(String folderPath) async {
