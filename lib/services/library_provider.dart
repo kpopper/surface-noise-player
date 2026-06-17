@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../models/folder_info.dart';
 import '../models/release.dart';
 import 'bookmark_service.dart';
 import 'library_service.dart';
@@ -15,11 +16,6 @@ class LibraryProvider extends ChangeNotifier {
   bool loading = false;
   String? rootPath;
 
-  // Serialise scans: each scan waits for the previous one to finish before
-  // starting. Prevents interleaving when the user triggers a full scan while
-  // an automatic quick scan is still running on a large library.
-  Future<void> _scanChain = Future.value();
-
   List<Release> get releases {
     if (_activeTags.isEmpty) return _releases;
     return _releases
@@ -31,45 +27,115 @@ class LibraryProvider extends ChangeNotifier {
   List<String> get activeTags => List.unmodifiable(_activeTags);
 
   Future<void> init() async {
-    // Resolve the security-scoped bookmark first so iOS grants directory access.
     final bookmarkedPath = await _bookmarks.resolveBookmark();
     rootPath = bookmarkedPath ?? await _svc.getSavedRoot();
-    if (rootPath != null) await _enqueue(_doQuickScan);
+    if (rootPath != null) {
+      loading = true;
+      notifyListeners();
+      _releases = await _svc.loadSelectedReleases();
+      _sortByActivity(_releases);
+      loading = false;
+      notifyListeners();
+      // Fire-and-forget background tasks.
+      _refreshDownloadState();
+      _refreshArtwork();
+    }
   }
 
   Future<void> pickFolder() async {
     final path = await _svc.pickLibraryFolder();
     if (path != null) {
       rootPath = path;
-      await _enqueue(_doFullScan);
+      _releases = [];
+      _activeTags.clear();
+      notifyListeners();
     }
   }
 
   Future<void> refresh() async {
-    if (rootPath != null) await _enqueue(_doQuickScan);
-  }
-
-  Future<void> _enqueue(Future<void> Function() scan) {
-    _scanChain = _scanChain.then((_) => scan()).catchError((_) {});
-    return _scanChain;
-  }
-
-  Future<void> _doQuickScan() async {
+    if (rootPath == null) return;
     loading = true;
     notifyListeners();
-    _releases = await _svc.quickScanLibrary(rootPath!, _releases);
+    _releases = await _svc.loadSelectedReleases();
     _sortByActivity(_releases);
     loading = false;
     notifyListeners();
   }
 
-  Future<void> _doFullScan() async {
-    loading = true;
-    notifyListeners();
-    _releases = await _svc.scanLibrary(rootPath!);
+  Future<List<FolderInfo>> listAllFolders() async {
+    if (rootPath == null) return [];
+    return _svc.listAllFolders(rootPath!);
+  }
+
+  Future<void> selectRelease(String folderPath) async {
+    // Wait for all files to be locally available before scanning for metadata.
+    final downloaded = await _bookmarks.awaitDownload(folderPath);
+    final release = await _svc.selectRelease(folderPath);
+    if (release == null) return;
+    if (downloaded) {
+      _releases.add(release);
+    } else {
+      _releases.add(release.copyWith(isAvailable: false));
+      // Download timed out — watch in background and mark available when ready.
+      _awaitAndMarkAvailable(folderPath);
+    }
     _sortByActivity(_releases);
-    loading = false;
     notifyListeners();
+  }
+
+  Future<void> _awaitAndMarkAvailable(String folderPath) async {
+    final downloaded = await _bookmarks.awaitDownload(folderPath);
+    if (!downloaded) return;
+    final index = _releases.indexWhere((r) => r.folderPath == folderPath);
+    if (index < 0) return; // was deselected in the meantime
+    final updated = await _svc.selectRelease(folderPath);
+    if (updated == null) return;
+    _releases[index] = updated;
+    _sortByActivity(_releases);
+    notifyListeners();
+  }
+
+  Future<void> deselectRelease(String folderPath) async {
+    await _svc.deselectRelease(folderPath);
+    await _bookmarks.evictRelease(folderPath);
+    _releases.removeWhere((r) => r.folderPath == folderPath);
+    notifyListeners();
+  }
+
+  Future<void> _refreshArtwork() async {
+    var changed = false;
+    for (var i = 0; i < _releases.length; i++) {
+      if (_releases[i].artPath != null) continue;
+      final artPath = await _svc.refreshArtwork(_releases[i].folderPath);
+      if (artPath != null) {
+        final r = _releases[i];
+        _releases[i] = Release(
+          folderPath: r.folderPath,
+          name: r.name,
+          tracks: r.tracks,
+          tags: r.tags,
+          artPath: artPath,
+          albumTitle: r.albumTitle,
+          albumArtist: r.albumArtist,
+          lastActivityAt: r.lastActivityAt,
+          isAvailable: r.isAvailable,
+        );
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
+  }
+
+  Future<void> _refreshDownloadState() async {
+    var changed = false;
+    for (var i = 0; i < _releases.length; i++) {
+      final available = await _bookmarks.downloadRelease(_releases[i].folderPath);
+      if (_releases[i].isAvailable != available) {
+        _releases[i] = _releases[i].copyWith(isAvailable: available);
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
   }
 
   Future<void> recordPlay(String folderPath) async {
@@ -111,25 +177,20 @@ class LibraryProvider extends ChangeNotifier {
 
   Future<void> addTagToRelease(Release release, String tag) async {
     await _svc.addTag(release.folderPath, tag);
-    final index =
-        _releases.indexWhere((r) => r.folderPath == release.folderPath);
+    final index = _releases.indexWhere((r) => r.folderPath == release.folderPath);
     if (index >= 0) {
-      final updated =
-          _releases[index].copyWith(tags: [..._releases[index].tags, tag]);
-      _releases[index] = updated;
+      _releases[index] = _releases[index].copyWith(tags: [..._releases[index].tags, tag]);
       notifyListeners();
     }
   }
 
   Future<void> removeTagFromRelease(Release release, String tag) async {
     await _svc.removeTag(release.folderPath, tag);
-    final index =
-        _releases.indexWhere((r) => r.folderPath == release.folderPath);
+    final index = _releases.indexWhere((r) => r.folderPath == release.folderPath);
     if (index >= 0) {
-      final updated = _releases[index].copyWith(
+      _releases[index] = _releases[index].copyWith(
         tags: _releases[index].tags.where((t) => t != tag).toList(),
       );
-      _releases[index] = updated;
       notifyListeners();
     }
   }

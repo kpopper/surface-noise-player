@@ -13,13 +13,25 @@ writing a feature; remove or update it when behaviour changes.
 - A subfolder with no audio files is ignored
 - Recognised audio formats: `.mp3` `.flac` `.aac` `.m4a` `.wav` `.ogg` `.opus` `.aiff` `.aif`
 - Non-audio files inside a release folder (e.g. cover art, text files) are ignored
-- Releases are sorted alphabetically by name, case-insensitive
-- Tracks within a release are numbered starting from 1
+- Tracks within a release are ordered by track number
+- Track numbers are read from embedded metadata; if absent, tracks are numbered in alphabetical filename order starting from 1
 - Leading track-number prefixes are stripped from filenames to produce the track title (e.g. `01 - Song.mp3` → `Song`, `02. Another.flac` → `Another`)
 - A previously selected root folder is remembered across app restarts
-- On app launch and when the refresh button is pressed, a quick scan runs: new folders are added, folders that no longer exist are removed, and existing releases are kept as-is without re-reading metadata or artwork
-- When a folder is selected for the first time, a full scan runs: all folders are re-read, metadata extracted, and the artwork cache is refreshed
-- Newly discovered folders are assigned an activity timestamp when first added, so they appear at the top of the library
+- On app launch, selected releases are loaded from the database without re-scanning the file system
+- On app launch, iCloud download is requested for all selected releases; if a download request fails, the release is marked unavailable
+- When a release folder is selected in the management screen, a full scan runs for that folder: metadata is extracted, artwork is resolved, and the result is persisted to the database
+- A newly selected folder is assigned an activity timestamp; a folder that was previously selected retains its existing timestamp
+
+## Library management
+
+- The library screen shows only selected releases, not all subfolders of the root
+- A management screen lists every direct subfolder of the root as a checkbox list, sorted alphabetically
+- Selecting a different folder resets the database
+- Selecting a folder scans it, persists the release to the database, triggers an iCloud download of its audio files, and immediately shows it in the library
+- Deselecting a folder removes it from the selected releases, evicts its audio files from iCloud storage, and removes it from the library
+- Tags and play history are preserved when a folder is deselected — they remain in the database keyed by folder path
+- Selected releases persist across app restarts
+- A release that fails its iCloud download request on app launch is shown in the library but cannot be opened
 
 ## Library sorting
 
@@ -89,10 +101,12 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Library screen
 
-- When no folder has been selected, an empty-state prompt is shown
-- When a folder is selected and contains no audio subfolders, a "no releases found" message is shown
-- When a folder is selected and releases exist, one card is shown per release
+- When no root folder has been selected, an empty-state "Set up Library" prompt is shown
+- When a root folder is selected but no albums are selected, a "No albums selected" message is shown with a button to open the management screen
+- When releases exist, one card is shown per release
 - When an active tag filter has no matching releases, a "no releases match" message is shown
+- The app bar has a manage button that opens the library management screen
+- A release marked unavailable is shown in the list but cannot be tapped to open
 
 ## Release card
 

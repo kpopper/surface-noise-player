@@ -42,6 +42,27 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
         case "cleanupArtworkCache":
             cleanupArtworkCache()
             result(nil)
+        case "downloadRelease":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
+                return
+            }
+            downloadRelease(path: path, result: result)
+        case "awaitDownload":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
+                return
+            }
+            awaitDownload(path: path, result: result)
+        case "evictRelease":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
+                return
+            }
+            evictRelease(path: path, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -179,13 +200,23 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
         }
     }
 
+    // MARK: - Artwork directory (persists across launches)
+
+    private var artworkDir: String {
+        let fm = FileManager.default
+        let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.path
+        let dir = (support as NSString).appendingPathComponent("snp_artwork")
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     // MARK: - Cleanup artwork cache
 
     private func cleanupArtworkCache() {
-        let tempDir = NSTemporaryDirectory()
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: tempDir) else { return }
-        for file in files where file.hasPrefix("snp_art_") {
-            try? FileManager.default.removeItem(atPath: tempDir + file)
+        let dir = artworkDir
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
+        for file in files {
+            try? FileManager.default.removeItem(atPath: (dir as NSString).appendingPathComponent(file))
         }
     }
 
@@ -210,17 +241,90 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                     .components(separatedBy: CharacterSet.alphanumerics.inverted)
                     .filter { !$0.isEmpty }
                     .joined(separator: "_")
-                let tempPath = NSTemporaryDirectory() + "snp_art_\(safeName).jpg"
+                let artPath = (self.artworkDir as NSString).appendingPathComponent("snp_art_\(safeName).jpg")
 
                 do {
-                    try data.write(to: URL(fileURLWithPath: tempPath))
-                    DispatchQueue.main.async { result(tempPath) }
+                    try data.write(to: URL(fileURLWithPath: artPath))
+                    DispatchQueue.main.async { result(artPath) }
                 } catch {
                     DispatchQueue.main.async { result(nil) }
                 }
                 return
             }
 
+            DispatchQueue.main.async { result(nil) }
+        }
+    }
+
+    // MARK: - iCloud download / evict
+
+    private func downloadRelease(path: String, result: @escaping FlutterResult) {
+        DispatchQueue.global(qos: .utility).async {
+            let fm = FileManager.default
+            guard let contents = try? fm.contentsOfDirectory(atPath: path) else {
+                DispatchQueue.main.async { result(false) }
+                return
+            }
+            var failed = false
+            for filename in contents {
+                let url = URL(fileURLWithPath: path).appendingPathComponent(filename)
+                do {
+                    try fm.startDownloadingUbiquitousItem(at: url)
+                } catch {
+                    failed = true
+                }
+            }
+            DispatchQueue.main.async { result(!failed) }
+        }
+    }
+
+    private func awaitDownload(path: String, result: @escaping FlutterResult) {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(atPath: path) else {
+            result(false)
+            return
+        }
+
+        let urls = contents.map { URL(fileURLWithPath: path).appendingPathComponent($0) }
+
+        // Trigger download for every file in the folder.
+        for url in urls {
+            try? fm.startDownloadingUbiquitousItem(at: url)
+        }
+
+        // Poll on a background thread until all files report as locally current.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let deadline = Date().addingTimeInterval(120) // 2-minute timeout
+            while Date() < deadline {
+                let allReady = urls.allSatisfy { url -> Bool in
+                    if let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]),
+                       let status = values.ubiquitousItemDownloadingStatus {
+                        return status == .current
+                    }
+                    // Non-ubiquitous file — available if it exists on disk.
+                    return fm.fileExists(atPath: url.path)
+                }
+                if allReady {
+                    DispatchQueue.main.async { result(true) }
+                    return
+                }
+                Thread.sleep(forTimeInterval: 1.0)
+            }
+            DispatchQueue.main.async { result(false) }
+        }
+    }
+
+    private func evictRelease(path: String, result: @escaping FlutterResult) {
+        DispatchQueue.global(qos: .utility).async {
+            let fm = FileManager.default
+            guard let contents = try? fm.contentsOfDirectory(atPath: path) else {
+                DispatchQueue.main.async { result(nil) }
+                return
+            }
+            for filename in contents {
+                let url = URL(fileURLWithPath: path).appendingPathComponent(filename)
+                try? fm.evictUbiquitousItem(at: url)
+            }
             DispatchQueue.main.async { result(nil) }
         }
     }

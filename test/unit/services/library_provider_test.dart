@@ -1,15 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:surface_noise_player/models/folder_info.dart';
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/library_provider.dart';
 import '../../helpers/fake_bookmark_service.dart';
 import '../../helpers/fake_library_service.dart';
 
-Release makeRelease(String name, {List<String> tags = const [], DateTime? lastActivityAt}) => Release(
+Release makeRelease(String name, {List<String> tags = const [], DateTime? lastActivityAt, bool isAvailable = true}) => Release(
       folderPath: '/music/$name',
       name: name,
       tracks: const [],
       tags: tags,
       lastActivityAt: lastActivityAt,
+      isAvailable: isAvailable,
     );
 
 void main() {
@@ -26,7 +28,7 @@ void main() {
   tearDown(() => provider.dispose());
 
   group('init', () {
-    test('sets rootPath and quick-scans when a saved root exists', () async {
+    test('sets rootPath and loads releases from DB when a saved root exists', () async {
       fakeService.rootToReturn = '/music';
       fakeService.releasesToReturn = [makeRelease('Album A')];
 
@@ -35,24 +37,32 @@ void main() {
       expect(provider.rootPath, '/music');
       expect(provider.allReleases.length, 1);
       expect(provider.allReleases.first.name, 'Album A');
-      expect(fakeService.quickScanCallCount, 1);
-      expect(fakeService.scanCallCount, 0);
+      expect(fakeService.loadSelectedCallCount, 1);
     });
 
-    test('leaves rootPath null and does not scan when no saved root', () async {
+    test('leaves rootPath null and does not load when no saved root', () async {
       fakeService.rootToReturn = null;
 
       await provider.init();
 
       expect(provider.rootPath, isNull);
       expect(provider.allReleases, isEmpty);
-      expect(fakeService.quickScanCallCount, 0);
-      expect(fakeService.scanCallCount, 0);
+      expect(fakeService.loadSelectedCallCount, 0);
+    });
+
+    test('uses bookmark path over saved root when both exist', () async {
+      fakeBookmarks.pathToReturn = '/bookmarked';
+      fakeService.rootToReturn = '/saved';
+      fakeService.releasesToReturn = [];
+
+      await provider.init();
+
+      expect(provider.rootPath, '/bookmarked');
     });
   });
 
   group('refresh', () {
-    test('quick-scans when rootPath is set', () async {
+    test('loads releases from DB when rootPath is set', () async {
       fakeService.rootToReturn = '/music';
       await provider.init();
 
@@ -60,26 +70,140 @@ void main() {
       await provider.refresh();
 
       expect(provider.allReleases.first.name, 'New Album');
-      expect(fakeService.quickScanCallCount, 2);
-      expect(fakeService.scanCallCount, 0);
+      expect(fakeService.loadSelectedCallCount, 2);
     });
 
     test('is a no-op when rootPath is null', () async {
       await provider.refresh();
-      expect(fakeService.quickScanCallCount, 0);
-      expect(fakeService.scanCallCount, 0);
+      expect(fakeService.loadSelectedCallCount, 0);
     });
   });
 
   group('pickFolder', () {
-    test('runs a full scan (not quick scan) when a folder is picked', () async {
+    test('sets rootPath and clears releases without scanning', () async {
       fakeService.rootToReturn = '/music';
-      fakeService.releasesToReturn = [makeRelease('Album A')];
+      fakeService.releasesToReturn = [makeRelease('Old Album')];
+      await provider.init();
 
+      fakeService.rootToReturn = '/new-music';
       await provider.pickFolder();
 
-      expect(fakeService.scanCallCount, 1);
-      expect(fakeService.quickScanCallCount, 0);
+      expect(provider.rootPath, '/new-music');
+      expect(provider.allReleases, isEmpty);
+      expect(fakeService.loadSelectedCallCount, 1); // only from init, not from pick
+    });
+
+    test('clears active tag filters', () async {
+      provider.toggleTag('jazz');
+      fakeService.rootToReturn = '/new-music';
+      await provider.pickFolder();
+      expect(provider.activeTags, isEmpty);
+    });
+
+    test('does nothing when pickLibraryFolder returns null', () async {
+      fakeService.rootToReturn = null;
+      await provider.pickFolder();
+      expect(provider.rootPath, isNull);
+    });
+  });
+
+  group('selectRelease', () {
+    setUp(() async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [];
+      await provider.init();
+    });
+
+    test('adds the returned release to the library', () async {
+      fakeService.releaseToReturnForSelect = makeRelease('New Album');
+      await provider.selectRelease('/music/New Album');
+      expect(provider.allReleases.map((r) => r.name), contains('New Album'));
+    });
+
+    test('calls selectRelease on the service with the correct path', () async {
+      fakeService.releaseToReturnForSelect = makeRelease('Album');
+      await provider.selectRelease('/music/Album');
+      expect(fakeService.lastSelectedPath, '/music/Album');
+    });
+
+    test('calls awaitDownload on bookmarks before scanning', () async {
+      fakeService.releaseToReturnForSelect = makeRelease('Album');
+      await provider.selectRelease('/music/Album');
+      expect(fakeBookmarks.lastAwaitDownloadPath, '/music/Album');
+    });
+
+    test('marks release unavailable when download times out', () async {
+      fakeService.releaseToReturnForSelect = makeRelease('Album');
+      fakeBookmarks.awaitDownloadResult = false;
+      await provider.selectRelease('/music/Album');
+      expect(provider.allReleases.first.isAvailable, isFalse);
+    });
+
+    test('does nothing when service returns null (no audio files)', () async {
+      fakeService.releaseToReturnForSelect = null;
+      await provider.selectRelease('/music/Empty');
+      expect(provider.allReleases, isEmpty);
+    });
+
+    test('notifies listeners', () async {
+      fakeService.releaseToReturnForSelect = makeRelease('Album');
+      int notifyCount = 0;
+      provider.addListener(() => notifyCount++);
+      await provider.selectRelease('/music/Album');
+      expect(notifyCount, greaterThan(0));
+    });
+  });
+
+  group('deselectRelease', () {
+    setUp(() async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [makeRelease('Album A'), makeRelease('Album B')];
+      await provider.init();
+    });
+
+    test('removes the release from the library', () async {
+      await provider.deselectRelease('/music/Album A');
+      expect(provider.allReleases.map((r) => r.name), isNot(contains('Album A')));
+      expect(provider.allReleases.map((r) => r.name), contains('Album B'));
+    });
+
+    test('calls deselectRelease on the service', () async {
+      await provider.deselectRelease('/music/Album A');
+      expect(fakeService.lastDeselectedPath, '/music/Album A');
+    });
+
+    test('calls evictRelease on bookmarks', () async {
+      await provider.deselectRelease('/music/Album A');
+      expect(fakeBookmarks.lastEvictPath, '/music/Album A');
+    });
+
+    test('notifies listeners', () async {
+      int notifyCount = 0;
+      provider.addListener(() => notifyCount++);
+      await provider.deselectRelease('/music/Album A');
+      expect(notifyCount, greaterThan(0));
+    });
+  });
+
+  group('listAllFolders', () {
+    test('delegates to service with rootPath', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [];
+      await provider.init();
+
+      fakeService.foldersToReturn = [
+        const FolderInfo(path: '/music/A', name: 'A', isSelected: true),
+        const FolderInfo(path: '/music/B', name: 'B', isSelected: false),
+      ];
+
+      final folders = await provider.listAllFolders();
+      expect(folders.length, 2);
+      expect(folders.first.name, 'A');
+    });
+
+    test('returns empty when rootPath is null', () async {
+      final folders = await provider.listAllFolders();
+      expect(folders, isEmpty);
     });
   });
 
@@ -256,7 +380,7 @@ void main() {
   });
 
   group('loading state', () {
-    test('is true during scan and false after', () async {
+    test('is true during load and false after', () async {
       fakeService.rootToReturn = '/music';
       final states = <bool>[];
       provider.addListener(() => states.add(provider.loading));

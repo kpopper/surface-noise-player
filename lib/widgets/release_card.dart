@@ -4,7 +4,7 @@ import 'art_thumbnail.dart';
 
 class ReleaseCard extends StatelessWidget {
   final Release release;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const ReleaseCard({super.key, required this.release, required this.onTap});
 

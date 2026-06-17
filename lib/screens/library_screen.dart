@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/library_provider.dart';
 import '../widgets/release_card.dart';
 import '../widgets/tag_filter_bar.dart';
+import 'library_management_screen.dart';
 import 'release_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -21,6 +22,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
   }
 
+  void _openManagement() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LibraryManagementScreen(),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -28,9 +39,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         title: const Text('Surface Noise'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.folder_open),
-            tooltip: 'Change music folder',
-            onPressed: () => context.read<LibraryProvider>().pickFolder(),
+            icon: const Icon(Icons.library_add),
+            tooltip: 'Manage library',
+            onPressed: _openManagement,
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -48,13 +59,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 children: [
                   const Icon(Icons.library_music, size: 72, color: Colors.grey),
                   const SizedBox(height: 16),
-                  const Text('No music folder selected',
+                  const Text('No library set up',
                       style: TextStyle(fontSize: 18, color: Colors.grey)),
                   const SizedBox(height: 24),
                   FilledButton.icon(
-                    icon: const Icon(Icons.folder_open),
-                    label: const Text('Choose folder from iCloud Drive'),
-                    onPressed: () => lib.pickFolder(),
+                    icon: const Icon(Icons.library_add),
+                    label: const Text('Set up Library'),
+                    onPressed: _openManagement,
                   ),
                 ],
               ),
@@ -67,17 +78,35 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
           final releases = lib.releases;
 
+          if (releases.isEmpty && lib.activeTags.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.album, size: 72, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text('No albums selected',
+                      style: TextStyle(fontSize: 18, color: Colors.grey)),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.library_add),
+                    label: const Text('Manage Library'),
+                    onPressed: _openManagement,
+                  ),
+                ],
+              ),
+            );
+          }
+
           return Column(
             children: [
               const TagFilterBar(),
               if (releases.isEmpty)
-                Expanded(
+                const Expanded(
                   child: Center(
                     child: Text(
-                      lib.activeTags.isEmpty
-                          ? 'No releases found in folder'
-                          : 'No releases match the selected tags',
-                      style: const TextStyle(color: Colors.grey),
+                      'No releases match the selected tags',
+                      style: TextStyle(color: Colors.grey),
                     ),
                   ),
                 )
@@ -85,15 +114,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 Expanded(
                   child: ListView.builder(
                     itemCount: releases.length,
-                    itemBuilder: (context, i) => ReleaseCard(
-                      release: releases[i],
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ReleaseScreen(release: releases[i]),
+                    itemBuilder: (context, i) {
+                      final release = releases[i];
+                      return Opacity(
+                        opacity: release.isAvailable ? 1.0 : 0.4,
+                        child: ReleaseCard(
+                          release: release,
+                          onTap: release.isAvailable
+                              ? () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ReleaseScreen(release: release),
+                                    ),
+                                  )
+                              : null,
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ),
             ],

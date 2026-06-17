@@ -1,19 +1,23 @@
+import 'package:surface_noise_player/models/folder_info.dart';
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/library_service.dart';
 
-/// A fully controllable in-memory stand-in for LibraryService.
 class FakeLibraryService implements LibraryService {
   String? rootToReturn;
   List<Release> releasesToReturn = [];
   List<String> tagsToReturn = [];
+  List<FolderInfo> foldersToReturn = [];
+  Release? releaseToReturnForSelect;
 
   // Recorded calls
   String? lastAddedTagPath;
   String? lastAddedTag;
   String? lastRemovedTagPath;
   String? lastRemovedTag;
-  int scanCallCount = 0;
-  int quickScanCallCount = 0;
+  String? lastSelectedPath;
+  String? lastDeselectedPath;
+  String? lastRecordedPlayPath;
+  int loadSelectedCallCount = 0;
 
   @override
   Future<String?> getSavedRoot() async => rootToReturn;
@@ -22,23 +26,34 @@ class FakeLibraryService implements LibraryService {
   Future<String?> pickLibraryFolder() async => rootToReturn;
 
   @override
-  Future<List<Release>> scanLibrary(String rootPath) async {
-    scanCallCount++;
+  Future<List<Release>> loadSelectedReleases() async {
+    loadSelectedCallCount++;
     return releasesToReturn;
   }
 
   @override
-  Future<List<Release>> quickScanLibrary(String rootPath, List<Release> existing) async {
-    quickScanCallCount++;
-    return releasesToReturn;
+  Future<Release?> selectRelease(String folderPath) async {
+    lastSelectedPath = folderPath;
+    return releaseToReturnForSelect;
   }
 
-  String? lastRecordedPlayPath;
+  @override
+  Future<void> deselectRelease(String folderPath) async {
+    lastDeselectedPath = folderPath;
+  }
+
+  @override
+  Future<List<FolderInfo>> listAllFolders(String rootPath) async {
+    return foldersToReturn;
+  }
 
   @override
   Future<void> recordPlay(String folderPath) async {
     lastRecordedPlayPath = folderPath;
   }
+
+  @override
+  Future<String?> refreshArtwork(String folderPath) async => null;
 
   @override
   Future<List<String>> allTags() async => tagsToReturn;
