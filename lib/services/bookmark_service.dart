@@ -12,6 +12,19 @@ abstract class BookmarkService {
 
   // Stops security-scoped access (call on app pause / after scan completes).
   Future<void> stopAccess();
+
+  // Requests iCloud download of all files in a folder. Returns false if the
+  // request fails (e.g. insufficient storage). Returns immediately without
+  // waiting for the download to complete — use awaitDownload for that.
+  Future<bool> downloadRelease(String folderPath);
+
+  // Triggers iCloud download of all files in a folder and waits until they are
+  // all locally available. Returns false on timeout or if the trigger fails.
+  // Used before scanning a newly selected release.
+  Future<bool> awaitDownload(String folderPath);
+
+  // Evicts all files in a folder from local iCloud storage. Best-effort.
+  Future<void> evictRelease(String folderPath);
 }
 
 class _BookmarkServiceImpl implements BookmarkService {
@@ -45,6 +58,35 @@ class _BookmarkServiceImpl implements BookmarkService {
     if (_activePath != null) {
       await _channel.invokeMethod('stopAccess', _activePath);
       _activePath = null;
+    }
+  }
+
+  @override
+  Future<bool> downloadRelease(String folderPath) async {
+    try {
+      final result = await _channel.invokeMethod<bool>('downloadRelease', {'path': folderPath});
+      return result ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> awaitDownload(String folderPath) async {
+    try {
+      final result = await _channel.invokeMethod<bool>('awaitDownload', {'path': folderPath});
+      return result ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> evictRelease(String folderPath) async {
+    try {
+      await _channel.invokeMethod('evictRelease', {'path': folderPath});
+    } on PlatformException {
+      // best-effort
     }
   }
 }

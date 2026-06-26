@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/tag_colors.dart';
 
 class TagChip extends StatelessWidget {
   final String label;
@@ -16,16 +17,23 @@ class TagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = tagColor(label);
     if (onDeleted != null) {
       return Chip(
-        label: Text(label),
-        deleteIcon: const Icon(Icons.close, size: 14),
+        label: Text(label, style: TextStyle(color: color)),
+        backgroundColor: color.withValues(alpha: 0.12),
+        deleteIcon: Icon(Icons.close, size: 14, color: color),
         onDeleted: onDeleted,
       );
     }
     return FilterChip(
-      label: Text(label),
+      label: Text(
+        label,
+        style: TextStyle(color: selected ? Colors.white : color),
+      ),
       selected: selected,
+      selectedColor: color,
+      showCheckmark: false,
       onSelected: onTap != null ? (_) => onTap!() : null,
     );
   }

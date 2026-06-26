@@ -5,6 +5,7 @@ import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/database_service.dart';
 import 'package:surface_noise_player/services/library_service.dart';
 import 'package:surface_noise_player/services/metadata_service.dart';
+import '../../helpers/fake_bookmark_service.dart';
 import '../../helpers/fake_metadata_service.dart';
 
 void main() {
@@ -47,14 +48,14 @@ void main() {
     });
   });
 
-  group('scanLibrary', () {
+  group('selectRelease', () {
     late Directory tempRoot;
     late DatabaseService dbService;
     late FakeMetadataService fakeMetadata;
     late LibraryService service;
 
     setUp(() async {
-      tempRoot = await Directory.systemTemp.createTemp('snp_test_');
+      tempRoot = await Directory.systemTemp.createTemp('snp_select_test_');
       dbService = DatabaseService.forTest(inMemoryDatabasePath);
       fakeMetadata = FakeMetadataService();
       service = LibraryService.forTest(dbService, metadata: fakeMetadata);
@@ -69,99 +70,22 @@ void main() {
       await File('${parent.path}/$name').create();
     }
 
-    test('cleans up artwork cache at the start of each scan', () async {
-      await service.scanLibrary(tempRoot.path);
-      expect(fakeMetadata.cleanupCalled, isTrue);
+    test('returns null when folder has no audio files', () async {
+      final emptyDir = await Directory('${tempRoot.path}/Empty').create();
+      final result = await service.selectRelease(emptyDir.path);
+      expect(result, isNull);
     });
 
-    test('populates lastActivityAt from database when present', () async {
-      final albumDir = await Directory('${tempRoot.path}/Album').create();
-      await createAudioFile(albumDir, '01.mp3');
-      final t = DateTime(2025, 6, 1, 12, 0, 0);
-      await dbService.setLastActivity(albumDir.path, t);
-
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.lastActivityAt, t);
-    });
-
-    test('lastActivityAt is null when not in database', () async {
-      final albumDir = await Directory('${tempRoot.path}/Album').create();
-      await createAudioFile(albumDir, '01.mp3');
-
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.lastActivityAt, isNull);
-    });
-
-    test('returns empty list when root does not exist', () async {
-      final releases = await service.scanLibrary('/nonexistent/path');
-      expect(releases, isEmpty);
-    });
-
-    test('returns empty list when root has no subfolders', () async {
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases, isEmpty);
-    });
-
-    test('ignores subfolders with no audio files', () async {
-      await Directory('${tempRoot.path}/EmptyAlbum').create();
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases, isEmpty);
-    });
-
-    test('scans a subfolder containing audio files as a release', () async {
+    test('returns a release with tracks when folder has audio files', () async {
       final albumDir = await Directory('${tempRoot.path}/My Album').create();
       await createAudioFile(albumDir, '01 - Track One.mp3');
       await createAudioFile(albumDir, '02 - Track Two.flac');
 
-      final releases = await service.scanLibrary(tempRoot.path);
+      final release = await service.selectRelease(albumDir.path);
 
-      expect(releases.length, 1);
-      expect(releases.first.name, 'My Album');
-      expect(releases.first.tracks.length, 2);
-    });
-
-    test('extracts correct track titles via cleanTitle', () async {
-      final albumDir = await Directory('${tempRoot.path}/Album').create();
-      await createAudioFile(albumDir, '01 - Hello World.mp3');
-
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.tracks.first.title, 'Hello World');
-    });
-
-    test('numbers tracks starting from 1', () async {
-      final albumDir = await Directory('${tempRoot.path}/Album').create();
-      await createAudioFile(albumDir, '01.mp3');
-      await createAudioFile(albumDir, '02.mp3');
-
-      final releases = await service.scanLibrary(tempRoot.path);
-      final trackNumbers = releases.first.tracks.map((t) => t.trackNumber).toList();
-      expect(trackNumbers, [1, 2]);
-    });
-
-    test('returns all releases (order is not guaranteed)', () async {
-      await Directory('${tempRoot.path}/Zebra').create()
-          .then((d) => createAudioFile(d, 'a.mp3'));
-      await Directory('${tempRoot.path}/Apple').create()
-          .then((d) => createAudioFile(d, 'a.mp3'));
-
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.map((r) => r.name), containsAll(['Apple', 'Zebra']));
-    });
-
-    test('attaches saved tags to a release', () async {
-      final albumDir = await Directory('${tempRoot.path}/Tagged Album').create();
-      await createAudioFile(albumDir, '01.mp3');
-      await dbService.addTag(albumDir.path, 'jazz');
-      await dbService.addTag(albumDir.path, 'vinyl');
-
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.tags, containsAll(['jazz', 'vinyl']));
-    });
-
-    test('ignores files directly in root (not in subfolders)', () async {
-      await createAudioFile(tempRoot, 'stray.mp3');
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases, isEmpty);
+      expect(release, isNotNull);
+      expect(release!.name, 'My Album');
+      expect(release.tracks.length, 2);
     });
 
     test('recognises all supported audio extensions', () async {
@@ -169,8 +93,8 @@ void main() {
       for (final ext in ['.mp3', '.flac', '.aac', '.m4a', '.wav', '.ogg', '.opus', '.aiff', '.aif']) {
         await createAudioFile(albumDir, 'track$ext');
       }
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.tracks.length, 9);
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.tracks.length, 9);
     });
 
     test('ignores non-audio files', () async {
@@ -179,8 +103,26 @@ void main() {
       await createAudioFile(albumDir, 'notes.txt');
       await createAudioFile(albumDir, '01.mp3');
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.tracks.length, 1);
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.tracks.length, 1);
+    });
+
+    test('extracts correct track titles via cleanTitle', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01 - Hello World.mp3');
+
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.tracks.first.title, 'Hello World');
+    });
+
+    test('orders tracks by track number', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '02.mp3');
+      await createAudioFile(albumDir, '01.mp3');
+
+      final release = await service.selectRelease(albumDir.path);
+      final trackNumbers = release!.tracks.map((t) => t.trackNumber).toList();
+      expect(trackNumbers, [1, 2]);
     });
 
     test('sets artPath to cover.jpg when present', () async {
@@ -188,16 +130,16 @@ void main() {
       await createAudioFile(albumDir, '01.mp3');
       await createAudioFile(albumDir, 'cover.jpg');
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.artPath, '${albumDir.path}/cover.jpg');
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.artPath, '${albumDir.path}/cover.jpg');
     });
 
     test('artPath is null when no image file present', () async {
       final albumDir = await Directory('${tempRoot.path}/Album').create();
       await createAudioFile(albumDir, '01.mp3');
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.artPath, isNull);
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.artPath, isNull);
     });
 
     test('prefers cover.jpg over folder.jpg', () async {
@@ -206,8 +148,8 @@ void main() {
       await createAudioFile(albumDir, 'folder.jpg');
       await createAudioFile(albumDir, 'cover.jpg');
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.artPath, '${albumDir.path}/cover.jpg');
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.artPath, '${albumDir.path}/cover.jpg');
     });
 
     test('uses embedded artwork when no image file is present', () async {
@@ -217,8 +159,8 @@ void main() {
       fakeMetadata = FakeMetadataService(artworkPaths: {trackPath: '/tmp/extracted.jpg'});
       service = LibraryService.forTest(dbService, metadata: fakeMetadata);
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.artPath, '/tmp/extracted.jpg');
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.artPath, '/tmp/extracted.jpg');
     });
 
     test('prefers image file over embedded artwork', () async {
@@ -229,17 +171,8 @@ void main() {
       fakeMetadata = FakeMetadataService(artworkPaths: {trackPath: '/tmp/extracted.jpg'});
       service = LibraryService.forTest(dbService, metadata: fakeMetadata);
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.artPath, '${albumDir.path}/cover.jpg');
-    });
-
-    test('falls back to folder.jpg when no preferred name matches', () async {
-      final albumDir = await Directory('${tempRoot.path}/Album').create();
-      await createAudioFile(albumDir, '01.mp3');
-      await createAudioFile(albumDir, 'folder.jpg');
-
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.artPath, '${albumDir.path}/folder.jpg');
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.artPath, '${albumDir.path}/cover.jpg');
     });
 
     test('uses metadata title when present', () async {
@@ -248,16 +181,8 @@ void main() {
       await File(trackPath).create();
       fakeMetadata.responses[trackPath] = const AudioMetadata(title: 'Metadata Title');
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.tracks.first.title, 'Metadata Title');
-    });
-
-    test('falls back to filename title when metadata title absent', () async {
-      final albumDir = await Directory('${tempRoot.path}/Album').create();
-      await createAudioFile(albumDir, '01 - Filename Title.mp3');
-
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.tracks.first.title, 'Filename Title');
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.tracks.first.title, 'Metadata Title');
     });
 
     test('uses metadata track number when present', () async {
@@ -266,8 +191,8 @@ void main() {
       await File(trackPath).create();
       fakeMetadata.responses[trackPath] = const AudioMetadata(trackNumber: 5);
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.tracks.first.trackNumber, 5);
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.tracks.first.trackNumber, 5);
     });
 
     test('sets track artist from metadata', () async {
@@ -276,16 +201,16 @@ void main() {
       await File(trackPath).create();
       fakeMetadata.responses[trackPath] = const AudioMetadata(artist: 'Track Artist');
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.tracks.first.artist, 'Track Artist');
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.tracks.first.artist, 'Track Artist');
     });
 
     test('track artist is null when not in metadata', () async {
       final albumDir = await Directory('${tempRoot.path}/Album').create();
       await createAudioFile(albumDir, '01.mp3');
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.tracks.first.artist, isNull);
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.tracks.first.artist, isNull);
     });
 
     test('release name uses albumArtist - albumTitle from metadata', () async {
@@ -297,54 +222,93 @@ void main() {
         albumTitle: 'Great Album',
       );
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.name, 'The Artist - Great Album');
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.name, 'The Artist - Great Album');
     });
 
     test('release name falls back to folder name when metadata absent', () async {
       final albumDir = await Directory('${tempRoot.path}/My Folder Name').create();
       await createAudioFile(albumDir, '01.mp3');
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.name, 'My Folder Name');
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.name, 'My Folder Name');
     });
 
-    test('release name falls back to folder name when only one metadata field present', () async {
-      final albumDir = await Directory('${tempRoot.path}/My Folder').create();
-      final trackPath = '${albumDir.path}/01.mp3';
-      await File(trackPath).create();
-      fakeMetadata.responses[trackPath] = const AudioMetadata(albumTitle: 'Album Only');
+    test('attaches saved tags to the release', () async {
+      final albumDir = await Directory('${tempRoot.path}/Tagged Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      await dbService.addTag(albumDir.path, 'jazz');
+      await dbService.addTag(albumDir.path, 'vinyl');
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.name, 'My Folder');
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.tags, containsAll(['jazz', 'vinyl']));
     });
 
-    test('stores albumTitle and albumArtist on release', () async {
+    test('assigns a new activity timestamp when folder has no prior activity', () async {
       final albumDir = await Directory('${tempRoot.path}/Album').create();
-      final trackPath = '${albumDir.path}/01.mp3';
-      await File(trackPath).create();
-      fakeMetadata.responses[trackPath] = const AudioMetadata(
-        albumArtist: 'The Artist',
-        albumTitle: 'Great Album',
-      );
+      await createAudioFile(albumDir, '01.mp3');
+      final before = DateTime.now().subtract(const Duration(seconds: 1));
 
-      final releases = await service.scanLibrary(tempRoot.path);
-      expect(releases.first.albumArtist, 'The Artist');
-      expect(releases.first.albumTitle, 'Great Album');
+      final release = await service.selectRelease(albumDir.path);
+
+      expect(release!.lastActivityAt, isNotNull);
+      expect(release.lastActivityAt!.isAfter(before), isTrue);
+    });
+
+    test('updates activity timestamp on re-selection so the release sorts to top', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      final old = DateTime(2025, 1, 1, 12, 0, 0);
+      await dbService.setLastActivity(albumDir.path, old);
+
+      final before = DateTime.now();
+      final release = await service.selectRelease(albumDir.path);
+      expect(release!.lastActivityAt, isNotNull);
+      expect(release.lastActivityAt!.isAfter(old), isTrue);
+      expect(release.lastActivityAt!.isAfter(before) || release.lastActivityAt!.isAtSameMomentAs(before), isTrue);
+    });
+
+    test('persists release to database', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+
+      await service.selectRelease(albumDir.path);
+
+      final row = await dbService.loadRelease(albumDir.path);
+      expect(row, isNotNull);
+      expect(row!['name'], 'Album');
+    });
+
+    test('persists tracks to database', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      await createAudioFile(albumDir, '02.mp3');
+
+      await service.selectRelease(albumDir.path);
+
+      final tracks = await dbService.loadTracks(albumDir.path);
+      expect(tracks.length, 2);
+    });
+
+    test('adds folder to selected_releases', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+
+      await service.selectRelease(albumDir.path);
+
+      expect(await dbService.allSelectedPaths(), contains(albumDir.path));
     });
   });
 
-  group('quickScanLibrary', () {
+  group('loadSelectedReleases', () {
     late Directory tempRoot;
     late DatabaseService dbService;
-    late FakeMetadataService fakeMetadata;
     late LibraryService service;
 
     setUp(() async {
-      tempRoot = await Directory.systemTemp.createTemp('snp_quick_test_');
+      tempRoot = await Directory.systemTemp.createTemp('snp_load_test_');
       dbService = DatabaseService.forTest(inMemoryDatabasePath);
-      fakeMetadata = FakeMetadataService();
-      service = LibraryService.forTest(dbService, metadata: fakeMetadata);
+      service = LibraryService.forTest(dbService);
     });
 
     tearDown(() async {
@@ -352,122 +316,232 @@ void main() {
       await tempRoot.delete(recursive: true);
     });
 
-    Future<void> createAudioFile(Directory parent, String name) async {
-      await File('${parent.path}/$name').create();
-    }
+    test('returns empty when no releases selected', () async {
+      expect(await service.loadSelectedReleases(), isEmpty);
+    });
 
-    test('returns empty list when root does not exist', () async {
-      final releases = await service.quickScanLibrary('/nonexistent', []);
+    test('returns releases matching selected paths', () async {
+      await dbService.addSelectedRelease('/music/a');
+      await dbService.saveRelease('/music/a', 'Album A');
+      await dbService.saveTracks('/music/a', [
+        const Track(path: '/music/a/01.mp3', title: 'Track', trackNumber: 1),
+      ]);
+
+      final releases = await service.loadSelectedReleases();
+      expect(releases.length, 1);
+      expect(releases.first.name, 'Album A');
+    });
+
+    test('skips selected paths with no matching release row', () async {
+      await dbService.addSelectedRelease('/music/orphan');
+
+      final releases = await service.loadSelectedReleases();
       expect(releases, isEmpty);
     });
 
-    test('adds a new folder not in the existing list', () async {
-      final albumDir = await Directory('${tempRoot.path}/New Album').create();
-      await createAudioFile(albumDir, '01.mp3');
+    test('loads tracks in track number order', () async {
+      await dbService.addSelectedRelease('/music/a');
+      await dbService.saveRelease('/music/a', 'Album A');
+      await dbService.saveTracks('/music/a', [
+        const Track(path: '/music/a/02.mp3', title: 'B', trackNumber: 2),
+        const Track(path: '/music/a/01.mp3', title: 'A', trackNumber: 1),
+      ]);
 
-      final releases = await service.quickScanLibrary(tempRoot.path, []);
-      expect(releases.length, 1);
-      expect(releases.first.name, 'New Album');
+      final releases = await service.loadSelectedReleases();
+      expect(releases.first.tracks.map((t) => t.trackNumber).toList(), [1, 2]);
     });
 
-    test('keeps an existing release whose folder still exists', () async {
-      final albumDir = await Directory('${tempRoot.path}/Existing Album').create();
-      await createAudioFile(albumDir, '01.mp3');
-      final existing = [
-        Release(folderPath: albumDir.path, name: 'Existing Album', tracks: const [], tags: const []),
-      ];
+    test('loads tags for each release', () async {
+      await dbService.addSelectedRelease('/music/a');
+      await dbService.saveRelease('/music/a', 'Album A');
+      await dbService.saveTracks('/music/a', []);
+      await dbService.addTag('/music/a', 'jazz');
 
-      final releases = await service.quickScanLibrary(tempRoot.path, existing);
-      expect(releases.length, 1);
-      expect(releases.first.name, 'Existing Album');
+      final releases = await service.loadSelectedReleases();
+      expect(releases.first.tags, ['jazz']);
     });
 
-    test('does not re-scan an existing release', () async {
-      final albumDir = await Directory('${tempRoot.path}/Album').create();
-      await createAudioFile(albumDir, '01.mp3');
-      fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(title: 'Should Not Appear');
-      final existing = [
-        Release(folderPath: albumDir.path, name: 'Album', tracks: const [], tags: const []),
-      ];
+    test('loads lastActivityAt from release_activity', () async {
+      final t = DateTime(2025, 6, 1, 12, 0, 0);
+      await dbService.addSelectedRelease('/music/a');
+      await dbService.saveRelease('/music/a', 'Album A');
+      await dbService.saveTracks('/music/a', []);
+      await dbService.setLastActivity('/music/a', t);
 
-      final releases = await service.quickScanLibrary(tempRoot.path, existing);
-      // Tracks come from existing (empty), not re-scanned
-      expect(releases.first.tracks, isEmpty);
+      final releases = await service.loadSelectedReleases();
+      expect(releases.first.lastActivityAt, t);
     });
 
-    test('removes a release whose folder no longer exists', () async {
-      final existing = [
-        Release(folderPath: '${tempRoot.path}/Gone Album', name: 'Gone Album', tracks: const [], tags: const []),
-      ];
+    test('lastActivityAt is null when no activity recorded', () async {
+      await dbService.addSelectedRelease('/music/a');
+      await dbService.saveRelease('/music/a', 'Album A');
+      await dbService.saveTracks('/music/a', []);
 
-      final releases = await service.quickScanLibrary(tempRoot.path, existing);
-      expect(releases, isEmpty);
+      final releases = await service.loadSelectedReleases();
+      expect(releases.first.lastActivityAt, isNull);
+    });
+  });
+
+  group('deselectRelease', () {
+    late DatabaseService dbService;
+    late LibraryService service;
+
+    setUp(() async {
+      dbService = DatabaseService.forTest(inMemoryDatabasePath);
+      service = LibraryService.forTest(dbService);
     });
 
-    test('handles a mix of new, existing, and removed folders', () async {
-      final keepDir = await Directory('${tempRoot.path}/Keep').create();
-      await createAudioFile(keepDir, '01.mp3');
-      final newDir = await Directory('${tempRoot.path}/New').create();
-      await createAudioFile(newDir, '01.mp3');
-
-      final existing = [
-        Release(folderPath: keepDir.path, name: 'Keep', tracks: const [], tags: const []),
-        Release(folderPath: '${tempRoot.path}/Gone', name: 'Gone', tracks: const [], tags: const []),
-      ];
-
-      final releases = await service.quickScanLibrary(tempRoot.path, existing);
-      expect(releases.length, 2);
-      expect(releases.map((r) => r.name), containsAll(['Keep', 'New']));
-      expect(releases.map((r) => r.name), isNot(contains('Gone')));
+    tearDown(() async {
+      await dbService.closeForTest();
     });
 
-    test('returns all expected releases (order is not guaranteed)', () async {
-      final zDir = await Directory('${tempRoot.path}/Zebra').create();
-      await createAudioFile(zDir, '01.mp3');
-      final aDir = await Directory('${tempRoot.path}/Apple').create();
-      await createAudioFile(aDir, '01.mp3');
-
-      final releases = await service.quickScanLibrary(tempRoot.path, []);
-      expect(releases.map((r) => r.name), containsAll(['Zebra', 'Apple']));
+    test('removes from selected_releases', () async {
+      await dbService.addSelectedRelease('/music/a');
+      await service.deselectRelease('/music/a');
+      expect(await dbService.allSelectedPaths(), isEmpty);
     });
 
-    test('sets lastActivityAt on newly discovered folders', () async {
-      final albumDir = await Directory('${tempRoot.path}/New Album').create();
-      await createAudioFile(albumDir, '01.mp3');
-
-      final before = DateTime.now().subtract(const Duration(seconds: 1));
-      final releases = await service.quickScanLibrary(tempRoot.path, []);
-      expect(releases.first.lastActivityAt, isNotNull);
-      expect(releases.first.lastActivityAt!.isAfter(before), isTrue);
+    test('removes release and tracks from database', () async {
+      await dbService.saveRelease('/music/a', 'Album');
+      await dbService.saveTracks('/music/a', [
+        const Track(path: '/music/a/01.mp3', title: 'Track', trackNumber: 1),
+      ]);
+      await service.deselectRelease('/music/a');
+      expect(await dbService.loadRelease('/music/a'), isNull);
+      expect(await dbService.loadTracks('/music/a'), isEmpty);
     });
 
-    test('persists lastActivityAt to database for new folders', () async {
-      final albumDir = await Directory('${tempRoot.path}/New Album').create();
-      await createAudioFile(albumDir, '01.mp3');
+    test('preserves tags after deselection', () async {
+      await dbService.addTag('/music/a', 'jazz');
+      await service.deselectRelease('/music/a');
+      expect(await dbService.tagsForRelease('/music/a'), ['jazz']);
+    });
 
-      await service.quickScanLibrary(tempRoot.path, []);
+    test('preserves activity after deselection', () async {
+      final t = DateTime(2025, 1, 1);
+      await dbService.setLastActivity('/music/a', t);
+      await service.deselectRelease('/music/a');
       final activities = await dbService.allLastActivities();
-      expect(activities[albumDir.path], isNotNull);
+      expect(activities['/music/a'], t);
+    });
+  });
+
+  group('listAllFolders', () {
+    late Directory tempRoot;
+    late DatabaseService dbService;
+    late LibraryService service;
+
+    setUp(() async {
+      tempRoot = await Directory.systemTemp.createTemp('snp_list_test_');
+      dbService = DatabaseService.forTest(inMemoryDatabasePath);
+      service = LibraryService.forTest(dbService);
     });
 
-    test('preserves existing DB timestamp on app restart (existing not in memory)', () async {
-      final albumDir = await Directory('${tempRoot.path}/Album').create();
-      await createAudioFile(albumDir, '01.mp3');
-      final original = DateTime(2025, 1, 1, 12, 0, 0);
-      await dbService.setLastActivity(albumDir.path, original);
-
-      // Simulate app restart: existing = [] but DB already has the activity
-      final releases = await service.quickScanLibrary(tempRoot.path, []);
-      expect(releases.first.lastActivityAt, original);
-
-      // DB timestamp should not have been overwritten
-      final activities = await dbService.allLastActivities();
-      expect(activities[albumDir.path], original);
+    tearDown(() async {
+      await dbService.closeForTest();
+      await tempRoot.delete(recursive: true);
     });
 
-    test('does not clean up artwork cache', () async {
-      await service.quickScanLibrary(tempRoot.path, []);
-      expect(fakeMetadata.cleanupCalled, isFalse);
+    test('returns empty when root does not exist', () async {
+      expect(await service.listAllFolders('/nonexistent/path'), isEmpty);
+    });
+
+    test('returns empty when root has no subfolders', () async {
+      expect(await service.listAllFolders(tempRoot.path), isEmpty);
+    });
+
+    test('lists subfolders sorted alphabetically', () async {
+      await Directory('${tempRoot.path}/Zebra').create();
+      await Directory('${tempRoot.path}/Apple').create();
+      await Directory('${tempRoot.path}/Mango').create();
+
+      final folders = await service.listAllFolders(tempRoot.path);
+      expect(folders.map((f) => f.name).toList(), ['Apple', 'Mango', 'Zebra']);
+    });
+
+    test('marks selected folders correctly', () async {
+      final selected = await Directory('${tempRoot.path}/Selected').create();
+      await Directory('${tempRoot.path}/Unselected').create();
+      await dbService.addSelectedRelease(selected.path);
+
+      final folders = await service.listAllFolders(tempRoot.path);
+      final selectedFolder = folders.firstWhere((f) => f.name == 'Selected');
+      final unselectedFolder = folders.firstWhere((f) => f.name == 'Unselected');
+
+      expect(selectedFolder.isSelected, isTrue);
+      expect(unselectedFolder.isSelected, isFalse);
+    });
+
+    test('does not include files, only directories', () async {
+      await File('${tempRoot.path}/stray.mp3').create();
+      await Directory('${tempRoot.path}/Album').create();
+
+      final folders = await service.listAllFolders(tempRoot.path);
+      expect(folders.length, 1);
+      expect(folders.first.name, 'Album');
+    });
+  });
+
+  group('pickLibraryFolder', () {
+    late DatabaseService dbService;
+    late FakeBookmarkService fakeBookmarks;
+    late LibraryService service;
+
+    setUp(() async {
+      dbService = DatabaseService.forTest(inMemoryDatabasePath);
+      fakeBookmarks = FakeBookmarkService();
+      service = LibraryService.forTest(dbService, bookmarks: fakeBookmarks);
+    });
+
+    tearDown(() async {
+      await dbService.closeForTest();
+    });
+
+    test('saves the new root and returns the path', () async {
+      fakeBookmarks.pathToReturn = '/new/root';
+      final path = await service.pickLibraryFolder();
+      expect(path, '/new/root');
+      expect(await dbService.savedLibraryRoot(), '/new/root');
+    });
+
+    test('returns null and does not save when picker is cancelled', () async {
+      fakeBookmarks.pathToReturn = null;
+      final path = await service.pickLibraryFolder();
+      expect(path, isNull);
+      expect(await dbService.savedLibraryRoot(), isNull);
+    });
+
+    test('resets library data when a different root is selected', () async {
+      await dbService.saveLibraryRoot('/old/root');
+      await dbService.addSelectedRelease('/old/root/Album');
+      await dbService.saveRelease('/old/root/Album', 'Old Album');
+      await dbService.addTag('/old/root/Album', 'jazz');
+
+      fakeBookmarks.pathToReturn = '/new/root';
+      await service.pickLibraryFolder();
+
+      expect(await dbService.allSelectedPaths(), isEmpty);
+      expect(await dbService.loadRelease('/old/root/Album'), isNull);
+      expect(await dbService.tagsForRelease('/old/root/Album'), isEmpty);
+    });
+
+    test('does not reset library data when the same root is re-selected', () async {
+      await dbService.saveLibraryRoot('/music');
+      await dbService.addSelectedRelease('/music/Album');
+      await dbService.saveRelease('/music/Album', 'Album');
+
+      fakeBookmarks.pathToReturn = '/music';
+      await service.pickLibraryFolder();
+
+      expect(await dbService.allSelectedPaths(), ['/music/Album']);
+    });
+
+    test('does not reset when no previous root exists', () async {
+      await dbService.addSelectedRelease('/music/Album');
+      fakeBookmarks.pathToReturn = '/music';
+      await service.pickLibraryFolder();
+      // No crash, no reset (nothing to compare against)
+      expect(await dbService.allSelectedPaths(), ['/music/Album']);
     });
   });
 

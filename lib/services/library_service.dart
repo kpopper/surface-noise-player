@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import '../models/folder_info.dart';
 import '../models/release.dart';
 import 'bookmark_service.dart';
 import 'database_service.dart';
@@ -15,20 +16,27 @@ class LibraryService {
   static LibraryService? _instance;
   final DatabaseService _db;
   final MetadataService _metadata;
+  final BookmarkService _bookmarks;
 
-  LibraryService._([DatabaseService? db, MetadataService? metadata])
+  LibraryService._([DatabaseService? db, MetadataService? metadata, BookmarkService? bookmarks])
       : _db = db ?? DatabaseService.instance,
-        _metadata = metadata ?? MetadataService.instance;
+        _metadata = metadata ?? MetadataService.instance,
+        _bookmarks = bookmarks ?? BookmarkService.instance;
 
   static LibraryService get instance => _instance ??= LibraryService._();
 
   @visibleForTesting
-  factory LibraryService.forTest(DatabaseService db, {MetadataService? metadata}) =>
-      LibraryService._(db, metadata);
+  factory LibraryService.forTest(DatabaseService db,
+          {MetadataService? metadata, BookmarkService? bookmarks}) =>
+      LibraryService._(db, metadata, bookmarks);
 
   Future<String?> pickLibraryFolder() async {
-    final path = await BookmarkService.instance.pickFolder();
+    final currentRoot = await _db.savedLibraryRoot();
+    final path = await _bookmarks.pickFolder();
     if (path != null) {
+      if (currentRoot != null && path != currentRoot) {
+        await _db.resetLibraryData();
+      }
       await _db.saveLibraryRoot(path);
     }
     return path;
@@ -36,96 +44,114 @@ class LibraryService {
 
   Future<String?> getSavedRoot() => _db.savedLibraryRoot();
 
-  Future<List<Release>> scanLibrary(String rootPath) async {
-    await _metadata.cleanupArtworkCache();
-
-    final root = Directory(rootPath);
-    if (!await root.exists()) return [];
-
+  Future<List<Release>> loadSelectedReleases() async {
+    final paths = await _db.allSelectedPaths();
     final activities = await _db.allLastActivities();
     final releases = <Release>[];
+    for (final path in paths) {
+      final releaseData = await _db.loadRelease(path);
+      if (releaseData == null) continue;
+      final trackRows = await _db.loadTracks(path);
+      final tags = await _db.tagsForRelease(path);
+      final tracks = trackRows.map((row) => Track(
+        path: row['file_path'] as String,
+        title: row['title'] as String,
+        trackNumber: row['track_number'] as int,
+        artist: row['artist'] as String?,
+      )).toList();
+      // Validate the stored art path — paths from previous installs or
+      // old temp-directory extractions will no longer exist on disk.
+      final rawArtPath = releaseData['art_path'] as String?;
+      final artPath = rawArtPath != null && File(rawArtPath).existsSync()
+          ? rawArtPath
+          : null;
 
-    await for (final entity in root.list()) {
-      if (entity is Directory) {
-        final scan = await _scanFolder(entity.path);
-        if (scan.tracks.isNotEmpty) {
-          final tags = await _db.tagsForRelease(entity.path);
-          final firstTrackPath = scan.tracks.first.path;
-          final artPath = await _findArtFile(entity.path, firstTrackPath: firstTrackPath);
-          final folderName = entity.path.split('/').last;
-          final name = (scan.albumArtist != null && scan.albumTitle != null)
-              ? '${scan.albumArtist} - ${scan.albumTitle}'
-              : folderName;
-          releases.add(Release(
-            folderPath: entity.path,
-            name: name,
-            tracks: scan.tracks,
-            tags: tags,
-            artPath: artPath,
-            albumTitle: scan.albumTitle,
-            albumArtist: scan.albumArtist,
-            lastActivityAt: activities[entity.path],
-          ));
-        }
-      }
+      releases.add(Release(
+        folderPath: path,
+        name: releaseData['name'] as String,
+        tracks: tracks,
+        tags: tags,
+        artPath: artPath,
+        albumTitle: releaseData['album_title'] as String?,
+        albumArtist: releaseData['album_artist'] as String?,
+        lastActivityAt: activities[path],
+      ));
     }
-
     return releases;
   }
 
-  Future<List<Release>> quickScanLibrary(String rootPath, List<Release> existing) async {
+  Future<Release?> selectRelease(String folderPath) async {
+    final scan = await _scanFolder(folderPath);
+    if (scan.tracks.isEmpty) return null;
+
+    final lastActivityAt = DateTime.now();
+    await _db.setLastActivity(folderPath, lastActivityAt);
+
+    final tags = await _db.tagsForRelease(folderPath);
+    final firstTrackPath = scan.tracks.first.path;
+    final artPath = await _findArtFile(folderPath, firstTrackPath: firstTrackPath);
+    final folderName = folderPath.split('/').last;
+    final name = (scan.albumArtist != null && scan.albumTitle != null)
+        ? '${scan.albumArtist} - ${scan.albumTitle}'
+        : folderName;
+
+    await _db.saveRelease(folderPath, name,
+        artPath: artPath, albumTitle: scan.albumTitle, albumArtist: scan.albumArtist);
+    await _db.saveTracks(folderPath, scan.tracks);
+    await _db.addSelectedRelease(folderPath);
+
+    return Release(
+      folderPath: folderPath,
+      name: name,
+      tracks: scan.tracks,
+      tags: tags,
+      artPath: artPath,
+      albumTitle: scan.albumTitle,
+      albumArtist: scan.albumArtist,
+      lastActivityAt: lastActivityAt,
+    );
+  }
+
+  Future<void> deselectRelease(String folderPath) async {
+    await _db.removeSelectedRelease(folderPath);
+    await _db.deleteRelease(folderPath);
+    // tags and release_activity rows are intentionally preserved
+  }
+
+  // Re-extract artwork for a release whose stored art path is missing or stale.
+  // Returns the new path if artwork was found and saved, null otherwise.
+  Future<String?> refreshArtwork(String folderPath) async {
+    final trackRows = await _db.loadTracks(folderPath);
+    if (trackRows.isEmpty) return null;
+    final firstTrackPath = trackRows.first['file_path'] as String;
+    final artPath = await _findArtFile(folderPath, firstTrackPath: firstTrackPath);
+    if (artPath != null) {
+      await _db.updateArtPath(folderPath, artPath);
+    }
+    return artPath;
+  }
+
+  Future<List<FolderInfo>> listAllFolders(String rootPath) async {
     final root = Directory(rootPath);
     if (!await root.exists()) return [];
 
-    final existingByPath = {for (final r in existing) r.folderPath: r};
-    final knownActivities = await _db.allLastActivities();
-    final currentPaths = <String>{};
-    final newReleases = <Release>[];
+    final selectedPaths = (await _db.allSelectedPaths()).toSet();
+    final folders = <FolderInfo>[];
 
     await for (final entity in root.list()) {
-      if (entity is! Directory) continue;
-      currentPaths.add(entity.path);
-      if (existingByPath.containsKey(entity.path)) continue;
-
-      final scan = await _scanFolder(entity.path);
-      if (scan.tracks.isEmpty) continue;
-
-      // Only assign a new timestamp if the folder has never been seen before.
-      // Folders known from a previous session (in DB but not in memory) keep
-      // their existing timestamp so play history is not overwritten on restart.
-      final existingActivity = knownActivities[entity.path];
-      final DateTime? lastActivityAt;
-      if (existingActivity == null) {
-        final now = DateTime.now();
-        await _db.setLastActivity(entity.path, now);
-        lastActivityAt = now;
-      } else {
-        lastActivityAt = existingActivity;
+      if (entity is Directory) {
+        final name = entity.path.split('/').last;
+        if (name.startsWith('_')) continue;
+        folders.add(FolderInfo(
+          path: entity.path,
+          name: name,
+          isSelected: selectedPaths.contains(entity.path),
+        ));
       }
-
-      final tags = await _db.tagsForRelease(entity.path);
-      final firstTrackPath = scan.tracks.first.path;
-      final artPath = await _findArtFile(entity.path, firstTrackPath: firstTrackPath);
-      final folderName = entity.path.split('/').last;
-      final name = (scan.albumArtist != null && scan.albumTitle != null)
-          ? '${scan.albumArtist} - ${scan.albumTitle}'
-          : folderName;
-      newReleases.add(Release(
-        folderPath: entity.path,
-        name: name,
-        tracks: scan.tracks,
-        tags: tags,
-        artPath: artPath,
-        albumTitle: scan.albumTitle,
-        albumArtist: scan.albumArtist,
-        lastActivityAt: lastActivityAt,
-      ));
     }
 
-    return [
-      ...existing.where((r) => currentPaths.contains(r.folderPath)),
-      ...newReleases,
-    ];
+    folders.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return folders;
   }
 
   Future<void> recordPlay(String folderPath) => _db.setLastActivity(folderPath, DateTime.now());
