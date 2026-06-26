@@ -2,11 +2,11 @@
 
 ## Pending
 
-- [ ] Search — filter releases by name on the library screen
-- [ ] Airplay integration
+- [ ] ZIP import — auto-scan iCloud Drive Downloads for ZIPs containing audio files; extract into library with ID3-derived `Artist - Album` folder names; archive source ZIP to `_zips/`; auto-select the new release
 
 ## Completed
 
+- [x] Improve appearance of tags in the library — colour-coded text and filter chips; tags shown as plain coloured text (no pills) in release cards
 - [x] Library management — per-album selection via a modal management screen; selecting downloads and scans an album, deselecting evicts it from local storage; unavailable releases (download timeout) recover automatically in the background
 - [x] Sorting — sort library by most recent activity (played or added)
 - [x] Now playing screen — full-screen player with progress bar and scrubbing

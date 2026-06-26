@@ -24,11 +24,11 @@ void main() {
     expect(find.textContaining('9'), findsWidgets);
   });
 
-  testWidgets('shows tags as chips when tags are present', (tester) async {
+  testWidgets('shows tags as plain text when tags are present', (tester) async {
     final release = makeRelease(tags: ['jazz', 'vinyl']);
     await tester.pumpWidget(wrap(ReleaseCard(release: release, onTap: () {})));
-    expect(find.text('jazz'), findsOneWidget);
-    expect(find.text('vinyl'), findsOneWidget);
+    expect(find.textContaining('jazz'), findsOneWidget);
+    expect(find.textContaining('vinyl'), findsOneWidget);
   });
 
   testWidgets('does not show track count when tags are present', (tester) async {

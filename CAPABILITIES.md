@@ -112,5 +112,13 @@ writing a feature; remove or update it when behaviour changes.
 
 - A release card displays the release name
 - When a release has no tags, the card shows the track count
-- When a release has tags, the card shows the tags instead of the track count
+- When a release has tags, the card shows the tags instead of the track count, as plain text (no pill/chip border)
+- Tags shown in the release card use the same font size as the track count
 - Tapping a release card opens that release
+
+## Tag colours
+
+- Each distinct tag is consistently assigned a colour from a fixed palette, derived from the tag string
+- In the release card, each tag is rendered in its assigned colour as plain text
+- In the filter bar, unselected filter chips show the tag label in its assigned colour with a default background; selected chips show a solid background in the tag's colour with white text
+- In the release screen, deletable tag chips use the tag's assigned colour as a tinted background with the label in that colour

@@ -17,6 +17,10 @@ class TagFilterBar extends StatelessWidget {
             if (tags.isEmpty) return const SizedBox.shrink();
 
             final active = lib.activeTags;
+            final sorted = [
+              ...tags.where((t) => active.contains(t)),
+              ...tags.where((t) => !active.contains(t)),
+            ];
 
             return SizedBox(
               height: 48,
@@ -34,7 +38,7 @@ class TagFilterBar extends StatelessWidget {
                         visualDensity: VisualDensity.compact,
                       ),
                     ),
-                  ...tags.map((t) => Padding(
+                  ...sorted.map((t) => Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: TagChip(
                           label: t,
