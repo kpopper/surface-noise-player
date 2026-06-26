@@ -19,6 +19,9 @@ dependencies:
   sqflite: ^2.3.3
   path: ^1.9.0
 
+  # HTTP client for MusicBrainz artwork fetching
+  http: ^1.2.0
+
   # State management
   provider: ^6.1.2
 

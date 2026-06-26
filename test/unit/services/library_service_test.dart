@@ -7,6 +7,7 @@ import 'package:surface_noise_player/services/library_service.dart';
 import 'package:surface_noise_player/services/metadata_service.dart';
 import '../../helpers/fake_bookmark_service.dart';
 import '../../helpers/fake_metadata_service.dart';
+import '../../helpers/fake_music_brainz_service.dart';
 
 void main() {
   setUpAll(() {
@@ -297,6 +298,98 @@ void main() {
       await service.selectRelease(albumDir.path);
 
       expect(await dbService.allSelectedPaths(), contains(albumDir.path));
+    });
+  });
+
+  group('MusicBrainz artwork fallback', () {
+    late Directory tempRoot;
+    late DatabaseService dbService;
+    late FakeMetadataService fakeMetadata;
+    late FakeMusicBrainzService fakeMusicBrainz;
+    late LibraryService service;
+
+    setUp(() async {
+      tempRoot = await Directory.systemTemp.createTemp('snp_mb_test_');
+      dbService = DatabaseService.forTest(inMemoryDatabasePath);
+      fakeMetadata = FakeMetadataService();
+      fakeMusicBrainz = FakeMusicBrainzService();
+      service = LibraryService.forTest(dbService,
+          metadata: fakeMetadata, musicBrainz: fakeMusicBrainz);
+    });
+
+    tearDown(() async {
+      await dbService.closeForTest();
+      await tempRoot.delete(recursive: true);
+    });
+
+    Future<void> createAudioFile(Directory parent, String name) async {
+      await File('${parent.path}/$name').create();
+    }
+
+    test('selectRelease fetches from MusicBrainz when no local art is found', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      final trackPath = '${albumDir.path}/01.mp3';
+      fakeMetadata.responses[trackPath] =
+          const AudioMetadata(albumArtist: 'Artist', albumTitle: 'Album');
+      fakeMusicBrainz.artPathToReturn = '${albumDir.path}/cover.jpg';
+
+      final release = await service.selectRelease(albumDir.path);
+
+      expect(release!.artPath, '${albumDir.path}/cover.jpg');
+      expect(fakeMusicBrainz.wasCalled, isTrue);
+      expect(fakeMusicBrainz.lastFetchedArtist, 'Artist');
+      expect(fakeMusicBrainz.lastFetchedTitle, 'Album');
+    });
+
+    test('selectRelease does not fetch from MusicBrainz when local art is found', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      await File('${albumDir.path}/cover.jpg').create();
+      fakeMusicBrainz.artPathToReturn = '/some/other/path.jpg';
+
+      final release = await service.selectRelease(albumDir.path);
+
+      expect(release!.artPath, '${albumDir.path}/cover.jpg');
+      expect(fakeMusicBrainz.wasCalled, isFalse);
+    });
+
+    test('rescanRelease fetches from MusicBrainz when no local art is found', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      final trackPath = '${albumDir.path}/01.mp3';
+      fakeMetadata.responses[trackPath] =
+          const AudioMetadata(albumArtist: 'Artist', albumTitle: 'Album');
+      fakeMusicBrainz.artPathToReturn = '${albumDir.path}/cover.jpg';
+      await service.selectRelease(albumDir.path);
+
+      fakeMusicBrainz.wasCalled = false;
+      await service.rescanRelease(albumDir.path);
+
+      final row = await dbService.loadRelease(albumDir.path);
+      expect(row!['art_path'], '${albumDir.path}/cover.jpg');
+      expect(fakeMusicBrainz.wasCalled, isTrue);
+    });
+
+    test('rescanRelease does not fetch from MusicBrainz when local art is found', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      await File('${albumDir.path}/cover.jpg').create();
+      await service.selectRelease(albumDir.path);
+
+      fakeMusicBrainz.wasCalled = false;
+      await service.rescanRelease(albumDir.path);
+
+      expect(fakeMusicBrainz.wasCalled, isFalse);
+    });
+
+    test('selectRelease skips MusicBrainz when album metadata is absent', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+
+      await service.selectRelease(albumDir.path);
+
+      expect(fakeMusicBrainz.wasCalled, isFalse);
     });
   });
 
