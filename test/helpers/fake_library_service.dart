@@ -18,6 +18,7 @@ class FakeLibraryService implements LibraryService {
   String? lastDeselectedPath;
   String? lastRecordedPlayPath;
   int loadSelectedCallCount = 0;
+  List<String> rescannedPaths = [];
 
   @override
   Future<String?> getSavedRoot() async => rootToReturn;
@@ -50,6 +51,11 @@ class FakeLibraryService implements LibraryService {
   @override
   Future<void> recordPlay(String folderPath) async {
     lastRecordedPlayPath = folderPath;
+  }
+
+  @override
+  Future<void> rescanRelease(String folderPath) async {
+    rescannedPaths.add(folderPath);
   }
 
   @override

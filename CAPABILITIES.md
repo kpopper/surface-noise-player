@@ -106,6 +106,7 @@ writing a feature; remove or update it when behaviour changes.
 - When releases exist, one card is shown per release
 - When an active tag filter has no matching releases, a "no releases match" message is shown
 - The app bar has a manage button that opens the library management screen
+- The app bar has a refresh button; tapping it re-scans every selected release folder on disk, updating tracks, metadata, and artwork; activity timestamps are not changed
 - A release marked unavailable is shown in the list but cannot be tapped to open
 
 ## Release card
