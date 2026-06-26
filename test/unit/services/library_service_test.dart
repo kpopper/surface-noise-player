@@ -383,7 +383,23 @@ void main() {
       expect(fakeMusicBrainz.wasCalled, isFalse);
     });
 
-    test('selectRelease skips MusicBrainz when album metadata is absent', () async {
+    test('selectRelease uses track artist as fallback when albumArtist is absent', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      final trackPath = '${albumDir.path}/01.mp3';
+      fakeMetadata.responses[trackPath] =
+          const AudioMetadata(artist: 'Electrelane', albumTitle: 'The Power Out');
+      fakeMusicBrainz.artPathToReturn = '${albumDir.path}/cover.jpg';
+
+      final release = await service.selectRelease(albumDir.path);
+
+      expect(release!.artPath, '${albumDir.path}/cover.jpg');
+      expect(fakeMusicBrainz.wasCalled, isTrue);
+      expect(fakeMusicBrainz.lastFetchedArtist, 'Electrelane');
+      expect(fakeMusicBrainz.lastFetchedTitle, 'The Power Out');
+    });
+
+    test('selectRelease skips MusicBrainz when both artist and album title are absent', () async {
       final albumDir = await Directory('${tempRoot.path}/Album').create();
       await createAudioFile(albumDir, '01.mp3');
 

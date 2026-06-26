@@ -94,9 +94,10 @@ class LibraryService {
     final tags = await _db.tagsForRelease(folderPath);
     final firstTrackPath = scan.tracks.first.path;
     var artPath = await _findArtFile(folderPath, firstTrackPath: firstTrackPath);
-    if (artPath == null && scan.albumArtist != null && scan.albumTitle != null) {
+    final searchArtist = scan.albumArtist ?? scan.tracks.firstOrNull?.artist;
+    if (artPath == null && searchArtist != null && scan.albumTitle != null) {
       artPath = await _musicBrainz?.fetchArtwork(
-        albumArtist: scan.albumArtist,
+        albumArtist: searchArtist,
         albumTitle: scan.albumTitle,
         folderPath: folderPath,
       );
@@ -140,9 +141,10 @@ class LibraryService {
 
     final firstTrackPath = scan.tracks.first.path;
     var artPath = await _findArtFile(folderPath, firstTrackPath: firstTrackPath);
-    if (artPath == null && scan.albumArtist != null && scan.albumTitle != null) {
+    final searchArtist = scan.albumArtist ?? scan.tracks.firstOrNull?.artist;
+    if (artPath == null && searchArtist != null && scan.albumTitle != null) {
       artPath = await _musicBrainz?.fetchArtwork(
-        albumArtist: scan.albumArtist,
+        albumArtist: searchArtist,
         albumTitle: scan.albumTitle,
         folderPath: folderPath,
       );
