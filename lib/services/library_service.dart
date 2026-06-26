@@ -5,6 +5,7 @@ import '../models/release.dart';
 import 'bookmark_service.dart';
 import 'database_service.dart';
 import 'metadata_service.dart';
+import 'music_brainz_service.dart';
 
 const _audioExtensions = {'.mp3', '.flac', '.aac', '.m4a', '.wav', '.ogg', '.opus', '.aiff', '.aif'};
 const _preferredArtFilenames = ['cover.jpg', 'folder.jpg', 'artwork.jpg', 'front.jpg'];
@@ -17,18 +18,21 @@ class LibraryService {
   final DatabaseService _db;
   final MetadataService _metadata;
   final BookmarkService _bookmarks;
+  final MusicBrainzService? _musicBrainz;
 
-  LibraryService._([DatabaseService? db, MetadataService? metadata, BookmarkService? bookmarks])
+  LibraryService._([DatabaseService? db, MetadataService? metadata, BookmarkService? bookmarks, MusicBrainzService? musicBrainz])
       : _db = db ?? DatabaseService.instance,
         _metadata = metadata ?? MetadataService.instance,
-        _bookmarks = bookmarks ?? BookmarkService.instance;
+        _bookmarks = bookmarks ?? BookmarkService.instance,
+        _musicBrainz = musicBrainz;
 
-  static LibraryService get instance => _instance ??= LibraryService._();
+  static LibraryService get instance =>
+      _instance ??= LibraryService._(null, null, null, MusicBrainzService.instance);
 
   @visibleForTesting
   factory LibraryService.forTest(DatabaseService db,
-          {MetadataService? metadata, BookmarkService? bookmarks}) =>
-      LibraryService._(db, metadata, bookmarks);
+          {MetadataService? metadata, BookmarkService? bookmarks, MusicBrainzService? musicBrainz}) =>
+      LibraryService._(db, metadata, bookmarks, musicBrainz);
 
   Future<String?> pickLibraryFolder() async {
     final currentRoot = await _db.savedLibraryRoot();
@@ -89,7 +93,15 @@ class LibraryService {
 
     final tags = await _db.tagsForRelease(folderPath);
     final firstTrackPath = scan.tracks.first.path;
-    final artPath = await _findArtFile(folderPath, firstTrackPath: firstTrackPath);
+    var artPath = await _findArtFile(folderPath, firstTrackPath: firstTrackPath);
+    final searchArtist = scan.albumArtist ?? scan.tracks.firstOrNull?.artist;
+    if (artPath == null && searchArtist != null && scan.albumTitle != null) {
+      artPath = await _musicBrainz?.fetchArtwork(
+        albumArtist: searchArtist,
+        albumTitle: scan.albumTitle,
+        folderPath: folderPath,
+      );
+    }
     final folderName = folderPath.split('/').last;
     final name = (scan.albumArtist != null && scan.albumTitle != null)
         ? '${scan.albumArtist} - ${scan.albumTitle}'
@@ -128,7 +140,15 @@ class LibraryService {
         : folderName;
 
     final firstTrackPath = scan.tracks.first.path;
-    final artPath = await _findArtFile(folderPath, firstTrackPath: firstTrackPath);
+    var artPath = await _findArtFile(folderPath, firstTrackPath: firstTrackPath);
+    final searchArtist = scan.albumArtist ?? scan.tracks.firstOrNull?.artist;
+    if (artPath == null && searchArtist != null && scan.albumTitle != null) {
+      artPath = await _musicBrainz?.fetchArtwork(
+        albumArtist: searchArtist,
+        albumTitle: scan.albumTitle,
+        folderPath: folderPath,
+      );
+    }
 
     await _db.saveRelease(folderPath, name,
         artPath: artPath, albumTitle: scan.albumTitle, albumArtist: scan.albumArtist);

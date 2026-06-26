@@ -13,3 +13,4 @@
 - [x] Quick scan — on launch and refresh, adds new folders and removes deleted ones without re-scanning existing releases
 - [x] Remove debug logging — `[scan]` print statements in `lib/services/library_service.dart`
 - [x] Album art — display cover art from a `cover.jpg`/`folder.jpg` (or any image file) in the release folder, or extract embedded artwork from audio metadata
+- [x] MusicBrainz artwork — when no local art is found, automatically fetch 1200px cover art from MusicBrainz Cover Art Archive and save as `cover.jpg`; prefers earliest release date
