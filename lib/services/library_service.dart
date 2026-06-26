@@ -118,6 +118,23 @@ class LibraryService {
     // tags and release_activity rows are intentionally preserved
   }
 
+  Future<void> rescanRelease(String folderPath) async {
+    final scan = await _scanFolder(folderPath);
+    if (scan.tracks.isEmpty) return;
+
+    final folderName = folderPath.split('/').last;
+    final name = (scan.albumArtist != null && scan.albumTitle != null)
+        ? '${scan.albumArtist} - ${scan.albumTitle}'
+        : folderName;
+
+    final firstTrackPath = scan.tracks.first.path;
+    final artPath = await _findArtFile(folderPath, firstTrackPath: firstTrackPath);
+
+    await _db.saveRelease(folderPath, name,
+        artPath: artPath, albumTitle: scan.albumTitle, albumArtist: scan.albumArtist);
+    await _db.saveTracks(folderPath, scan.tracks);
+  }
+
   // Re-extract artwork for a release whose stored art path is missing or stale.
   // Returns the new path if artwork was found and saved, null otherwise.
   Future<String?> refreshArtwork(String folderPath) async {

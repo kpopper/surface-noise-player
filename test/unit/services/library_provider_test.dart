@@ -77,6 +77,21 @@ void main() {
       await provider.refresh();
       expect(fakeService.loadSelectedCallCount, 0);
     });
+
+    test('rescans each currently loaded release before reloading', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [makeRelease('Album A'), makeRelease('Album B')];
+      await provider.init();
+
+      await provider.refresh();
+
+      expect(fakeService.rescannedPaths, containsAll(['/music/Album A', '/music/Album B']));
+    });
+
+    test('does not rescan when rootPath is null', () async {
+      await provider.refresh();
+      expect(fakeService.rescannedPaths, isEmpty);
+    });
   });
 
   group('pickFolder', () {

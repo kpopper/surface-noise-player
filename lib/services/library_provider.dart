@@ -56,6 +56,9 @@ class LibraryProvider extends ChangeNotifier {
     if (rootPath == null) return;
     loading = true;
     notifyListeners();
+    for (final release in _releases) {
+      await _svc.rescanRelease(release.folderPath);
+    }
     _releases = await _svc.loadSelectedReleases();
     _sortByActivity(_releases);
     loading = false;

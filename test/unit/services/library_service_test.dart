@@ -300,6 +300,74 @@ void main() {
     });
   });
 
+  group('rescanRelease', () {
+    late Directory tempRoot;
+    late DatabaseService dbService;
+    late FakeMetadataService fakeMetadata;
+    late LibraryService service;
+
+    setUp(() async {
+      tempRoot = await Directory.systemTemp.createTemp('snp_rescan_test_');
+      dbService = DatabaseService.forTest(inMemoryDatabasePath);
+      fakeMetadata = FakeMetadataService();
+      service = LibraryService.forTest(dbService, metadata: fakeMetadata);
+    });
+
+    tearDown(() async {
+      await dbService.closeForTest();
+      await tempRoot.delete(recursive: true);
+    });
+
+    Future<void> createAudioFile(Directory parent, String name) async {
+      await File('${parent.path}/$name').create();
+    }
+
+    test('updates tracks in the database', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      await service.selectRelease(albumDir.path);
+
+      await createAudioFile(albumDir, '02.mp3');
+      await service.rescanRelease(albumDir.path);
+
+      final tracks = await dbService.loadTracks(albumDir.path);
+      expect(tracks.length, 2);
+    });
+
+    test('updates artwork in the database', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      await service.selectRelease(albumDir.path);
+      expect((await dbService.loadRelease(albumDir.path))!['art_path'], isNull);
+
+      await File('${albumDir.path}/cover.jpg').create();
+      await service.rescanRelease(albumDir.path);
+
+      final row = await dbService.loadRelease(albumDir.path);
+      expect(row!['art_path'], '${albumDir.path}/cover.jpg');
+    });
+
+    test('preserves lastActivityAt', () async {
+      final albumDir = await Directory('${tempRoot.path}/Album').create();
+      await createAudioFile(albumDir, '01.mp3');
+      final t = DateTime(2025, 3, 15, 12, 0, 0);
+      await dbService.setLastActivity(albumDir.path, t);
+      await service.selectRelease(albumDir.path);
+      await dbService.setLastActivity(albumDir.path, t);
+
+      await service.rescanRelease(albumDir.path);
+
+      final activities = await dbService.allLastActivities();
+      expect(activities[albumDir.path], t);
+    });
+
+    test('does nothing when folder has no audio files', () async {
+      final albumDir = await Directory('${tempRoot.path}/Empty').create();
+      await service.rescanRelease(albumDir.path);
+      expect(await dbService.loadRelease(albumDir.path), isNull);
+    });
+  });
+
   group('loadSelectedReleases', () {
     late Directory tempRoot;
     late DatabaseService dbService;
