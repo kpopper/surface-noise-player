@@ -88,13 +88,13 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Playback
 
-- If the requested track cannot be played (e.g. an undownloaded iCloud file), a message is shown and playback automatically advances to the next track in the release
-- If no track in the release from the requested one onward can be played, playback stops cleanly without looping or crashing
-- If a track later in the queue becomes unplayable during playback, the player automatically skips to the next track and shows a message, up to a bounded number of consecutive skips before pausing
+- Before playback starts, each requested track's file is checked for local availability; missing tracks (e.g. an undownloaded/evicted iCloud file) are skipped and a message is shown for each one, rather than being handed to the player
+- If no track in the release from the requested one onward is available, playback stops cleanly without looping or crashing
+- If a track that exists on disk still fails to play (e.g. a corrupt file), a message is shown and playback automatically advances to the next track, up to a bounded number of consecutive failures before pausing
 - Manually skipping to the next or previous track shows the same unplayable message and cascades to the next track in that direction if it also can't be played
 - A cancelled/superseded playback request (e.g. tapping a second track before the first finishes loading) does not show an error message
-- Reaching the end of the release's last track — whether it played successfully or failed to play — stops playback and closes the mini player, rather than leaving it showing the last track as playing
-- If playback stops because no further track could be played (all remaining tracks unavailable), playback stops and the mini player closes the same way
+- Reaching the end of the release's last available track stops playback and closes the mini player, rather than leaving it showing the last track as playing
+- If playback stops because no further track could be played, the mini player closes the same way
 
 ## Mini player
 
