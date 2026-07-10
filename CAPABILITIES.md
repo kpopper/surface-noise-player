@@ -102,6 +102,7 @@ writing a feature; remove or update it when behaviour changes.
 - Shows current track title, album, and art thumbnail
 - Provides play/pause and skip controls
 - Tapping it opens the Now Playing screen
+- Sized for easy tapping: larger art thumbnail, text, and control icons than a standard compact bar, with generous padding
 
 ## Now Playing screen
 
