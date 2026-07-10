@@ -82,6 +82,10 @@ class FakePlayerService implements AbstractPlayerService {
     ));
   }
 
+  void clearSequenceState() {
+    _sequenceStateController.add(null);
+  }
+
   void emitPlayerState({
     required bool playing,
     ProcessingState processingState = ProcessingState.ready,

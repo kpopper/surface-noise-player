@@ -110,6 +110,7 @@ writing a feature; remove or update it when behaviour changes.
 - Progress bar showing current position, scrubbable to seek
 - Play/pause, previous, and next controls
 - Dismissed by tapping the close button or swiping down
+- Automatically closes itself if playback stops (e.g. the queue finishes or runs out of playable tracks) while it's open
 
 ## Library screen
 
