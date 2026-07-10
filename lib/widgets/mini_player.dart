@@ -58,7 +58,9 @@ class MiniPlayer extends StatelessWidget {
               StreamBuilder<PlayerState>(
                 stream: svc.playerStateStream,
                 builder: (context, stateSnap) {
-                  final playing = stateSnap.data?.playing ?? false;
+                  final state = stateSnap.data;
+                  final playing = (state?.playing ?? false) &&
+                      state?.processingState != ProcessingState.completed;
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

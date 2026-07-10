@@ -132,7 +132,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 StreamBuilder<PlayerState>(
                   stream: _svc.playerStateStream,
                   builder: (context, stateSnap) {
-                    final playing = stateSnap.data?.playing ?? false;
+                    final state = stateSnap.data;
+                    final playing = (state?.playing ?? false) &&
+                        state?.processingState != ProcessingState.completed;
                     return Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [

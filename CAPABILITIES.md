@@ -86,6 +86,16 @@ writing a feature; remove or update it when behaviour changes.
 - Copying a release with new tags preserves all other fields
 - A track has a file path, a title, a track number, an optional duration, and an optional artist
 
+## Playback
+
+- If the requested track cannot be played (e.g. an undownloaded iCloud file), a message is shown and playback automatically advances to the next track in the release
+- If no track in the release from the requested one onward can be played, playback stops cleanly without looping or crashing
+- If a track later in the queue becomes unplayable during playback, the player automatically skips to the next track and shows a message, up to a bounded number of consecutive skips before pausing
+- Manually skipping to the next or previous track shows the same unplayable message and cascades to the next track in that direction if it also can't be played
+- A cancelled/superseded playback request (e.g. tapping a second track before the first finishes loading) does not show an error message
+- Reaching the end of the release's last track — whether it played successfully or failed to play — stops playback and closes the mini player, rather than leaving it showing the last track as playing
+- If playback stops because no further track could be played (all remaining tracks unavailable), playback stops and the mini player closes the same way
+
 ## Mini player
 
 - Visible at the bottom of every screen whenever something is playing
