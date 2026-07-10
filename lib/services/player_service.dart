@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import '../models/release.dart';
 import 'abstract_player_service.dart';
+import 'bookmark_service.dart';
 
 class PlayerService implements AbstractPlayerService {
   static PlayerService? _instance;
@@ -12,20 +12,22 @@ class PlayerService implements AbstractPlayerService {
 
   // Bounds how many consecutive mid-playback failures just_audio will
   // auto-skip past before giving up and pausing, so a systemic failure can't
-  // trigger an unbroken skip storm. Kept as a fallback for tracks that exist
-  // on disk but fail to decode; missing files are now filtered out before
-  // ever being queued (see playRelease), since a failed auto-advance into an
-  // evicted iCloud placeholder isn't reliably reported back to Flutter.
+  // trigger an unbroken skip storm. Kept as a fallback for tracks that pass
+  // the availability check but still fail to decode; unavailable tracks are
+  // now filtered out before ever being queued (see playRelease), since a
+  // failed auto-advance into an evicted iCloud placeholder isn't reliably
+  // reported back to Flutter.
   static const int _maxConsecutiveSkips = 10;
 
   final AudioPlayer player = AudioPlayer(maxSkipsOnError: _maxConsecutiveSkips);
+  final BookmarkService _bookmarks;
   final _errorMessageController = StreamController<String>.broadcast();
   StreamSubscription<PlayerException>? _errorStreamSub;
   StreamSubscription<ProcessingState>? _processingStateSub;
 
   // The tracks actually handed to just_audio for the current queue, in
-  // sequence order — a subset of currentRelease.tracks with missing files
-  // filtered out, so sequence indices line up with this list, not with
+  // sequence order — a subset of currentRelease.tracks with unavailable
+  // files filtered out, so sequence indices line up with this list, not with
   // currentRelease.tracks.
   List<Track> _loadedTracks = [];
 
@@ -35,7 +37,8 @@ class PlayerService implements AbstractPlayerService {
   bool _manualLoadInProgress = false;
   DateTime? _lastErrorEmitAt;
 
-  PlayerService._() {
+  PlayerService._([BookmarkService? bookmarks])
+      : _bookmarks = bookmarks ?? BookmarkService.instance {
     _errorStreamSub = player.errorStream.listen(_handleMidPlaybackError);
     _processingStateSub = player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed && !_manualLoadInProgress) {
@@ -78,7 +81,7 @@ class PlayerService implements AbstractPlayerService {
     final playable = <Track>[];
     for (var i = trackIndex; i < release.tracks.length; i++) {
       final track = release.tracks[i];
-      if (File(track.path).existsSync()) {
+      if (await _bookmarks.isFileAvailable(track.path)) {
         playable.add(track);
       } else {
         _emitErrorMessage(track.title);

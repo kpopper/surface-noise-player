@@ -63,6 +63,13 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                 return
             }
             evictRelease(path: path, result: result)
+        case "isFileAvailable":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
+                return
+            }
+            isFileAvailable(path: path, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -311,6 +318,21 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                 Thread.sleep(forTimeInterval: 1.0)
             }
             DispatchQueue.main.async { result(false) }
+        }
+    }
+
+    private func isFileAvailable(path: String, result: @escaping FlutterResult) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fm = FileManager.default
+            let url = URL(fileURLWithPath: path)
+            let available: Bool
+            if let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]),
+               let status = values.ubiquitousItemDownloadingStatus {
+                available = status == .current
+            } else {
+                available = fm.fileExists(atPath: path)
+            }
+            DispatchQueue.main.async { result(available) }
         }
     }
 

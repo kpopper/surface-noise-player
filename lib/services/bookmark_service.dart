@@ -25,6 +25,10 @@ abstract class BookmarkService {
 
   // Evicts all files in a folder from local iCloud storage. Best-effort.
   Future<void> evictRelease(String folderPath);
+
+  // Checks whether a single file is available locally right now (downloaded,
+  // or not iCloud-backed at all) without triggering a download.
+  Future<bool> isFileAvailable(String path);
 }
 
 class _BookmarkServiceImpl implements BookmarkService {
@@ -87,6 +91,16 @@ class _BookmarkServiceImpl implements BookmarkService {
       await _channel.invokeMethod('evictRelease', {'path': folderPath});
     } on PlatformException {
       // best-effort
+    }
+  }
+
+  @override
+  Future<bool> isFileAvailable(String path) async {
+    try {
+      final result = await _channel.invokeMethod<bool>('isFileAvailable', {'path': path});
+      return result ?? false;
+    } on PlatformException {
+      return false;
     }
   }
 }
