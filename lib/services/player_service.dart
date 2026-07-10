@@ -100,7 +100,11 @@ class PlayerService implements AbstractPlayerService {
       for (var index = 0; index < playable.length; index++) {
         try {
           await player.setAudioSources(sources, initialIndex: index);
-          await player.play();
+          // player.play()'s Future only resolves when playback later
+          // finishes/pauses/stops, not when it starts — must not be awaited
+          // here, or _manualLoadInProgress would stay true (suppressing the
+          // completed/error listeners below) for the whole song.
+          unawaited(player.play());
           return;
         } on PlayerInterruptedException {
           // A newer playRelease/playTrack call superseded this one mid-load.
@@ -136,7 +140,8 @@ class PlayerService implements AbstractPlayerService {
       while (index >= 0 && index < total) {
         try {
           await player.seek(Duration.zero, index: index);
-          await player.play();
+          // See the comment in playRelease — must not await play() here.
+          unawaited(player.play());
           return;
         } on PlayerInterruptedException {
           return;
