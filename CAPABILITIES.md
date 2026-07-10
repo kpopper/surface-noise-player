@@ -88,8 +88,9 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Playback
 
-- Before playback starts, each requested track's file is checked for local availability; missing tracks (e.g. an undownloaded/evicted iCloud file) are silently skipped rather than being handed to the player — availability is already shown visually in the release screen, so no message is shown per skipped track
-- If no track in the release from the requested one onward is available, a message is shown and playback stops cleanly without looping or crashing
+- Before playback starts, each track in the release is checked for local availability; missing tracks (e.g. an undownloaded/evicted iCloud file) are silently skipped rather than being handed to the player — availability is already shown visually in the release screen, so no message is shown per skipped track
+- If no track in the release is available, a message is shown and playback stops cleanly without looping or crashing
+- The full playback queue is the release's available tracks in track order, regardless of which track playback started on — skip previous/next moves through the release's track order, not through play history, so skipping back from a track works even if the earlier track was never played this session
 - If a track that exists on disk still fails to play (e.g. a corrupt file), a message is shown and playback automatically advances to the next track, up to a bounded number of consecutive failures before pausing
 - Manually skipping to the next or previous track shows the same unplayable message and cascades to the next track in that direction if it also can't be played
 - A cancelled/superseded playback request (e.g. tapping a second track before the first finishes loading) does not show an error message
