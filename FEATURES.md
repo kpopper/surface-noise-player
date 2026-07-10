@@ -3,6 +3,10 @@
 ## Pending
 
 - [ ] ZIP import — auto-scan iCloud Drive Downloads for ZIPs containing audio files; extract into library with ID3-derived `Artist - Album` folder names; archive source ZIP to `_zips/`; auto-select the new release
+- [ ] MusicBrainz artwork retrieval doesn't seem to be working on phone (Tortoise, Geese albums not showing cover)
+- [ ] Library management improvements - would like to see new additions to the library more easily, and would also like to be able to search to filter the list
+- [ ] Skip buttons in player should relate to the tracks in the release, not the played tracks (e.g. if tapping on track 4, skip back should go to track 3, even if it hasn't been played)
+- [ ] Increase the size of the mini player to make it easier to tap
 
 ## Completed
 
