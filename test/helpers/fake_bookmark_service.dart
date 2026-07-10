@@ -8,6 +8,7 @@ class FakeBookmarkService implements BookmarkService {
   String? lastDownloadPath;
   String? lastAwaitDownloadPath;
   String? lastEvictPath;
+  Set<String> unavailablePaths = {};
 
   @override
   Future<String?> pickFolder() async {
@@ -37,4 +38,7 @@ class FakeBookmarkService implements BookmarkService {
   Future<void> evictRelease(String folderPath) async {
     lastEvictPath = folderPath;
   }
+
+  @override
+  Future<bool> isFileAvailable(String path) async => !unavailablePaths.contains(path);
 }

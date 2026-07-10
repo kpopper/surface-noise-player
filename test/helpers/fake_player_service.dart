@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/abstract_player_service.dart';
 
@@ -9,6 +10,7 @@ class FakePlayerService implements AbstractPlayerService {
   final _playerStateController = StreamController<PlayerState>.broadcast();
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration?>.broadcast();
+  final _errorMessageController = StreamController<String>.broadcast();
 
   @override
   Release? currentRelease;
@@ -40,6 +42,9 @@ class FakePlayerService implements AbstractPlayerService {
   Stream<Duration?> get durationStream => _durationController.stream;
 
   @override
+  Stream<String> get errorMessageStream => _errorMessageController.stream;
+
+  @override
   Future<void> play() async => playCalled = true;
 
   @override
@@ -65,8 +70,31 @@ class FakePlayerService implements AbstractPlayerService {
   Future<void> playTrack(Release release, int trackIndex) =>
       playRelease(release, trackIndex: trackIndex);
 
-  void emitPlayerState({required bool playing}) {
-    _playerStateController.add(PlayerState(playing, ProcessingState.ready));
+  void emitSequenceState(MediaItem tag) {
+    final source = AudioSource.uri(Uri.file('/tmp/track.mp3'), tag: tag)
+        as IndexedAudioSource;
+    _sequenceStateController.add(SequenceState(
+      sequence: [source],
+      currentIndex: 0,
+      shuffleIndices: const [0],
+      shuffleModeEnabled: false,
+      loopMode: LoopMode.off,
+    ));
+  }
+
+  void clearSequenceState() {
+    _sequenceStateController.add(null);
+  }
+
+  void emitPlayerState({
+    required bool playing,
+    ProcessingState processingState = ProcessingState.ready,
+  }) {
+    _playerStateController.add(PlayerState(playing, processingState));
+  }
+
+  void emitErrorMessage(String message) {
+    _errorMessageController.add(message);
   }
 
   void dispose() {
@@ -74,5 +102,6 @@ class FakePlayerService implements AbstractPlayerService {
     _playerStateController.close();
     _positionController.close();
     _durationController.close();
+    _errorMessageController.close();
   }
 }

@@ -7,6 +7,7 @@ abstract class AbstractPlayerService {
   Stream<PlayerState> get playerStateStream;
   Stream<Duration> get positionStream;
   Stream<Duration?> get durationStream;
+  Stream<String> get errorMessageStream;
   bool get hasPrevious;
   bool get hasNext;
   Future<void> seekToPrevious();

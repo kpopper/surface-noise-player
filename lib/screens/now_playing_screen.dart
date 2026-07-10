@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
@@ -16,11 +17,29 @@ class NowPlayingScreen extends StatefulWidget {
 class _NowPlayingScreenState extends State<NowPlayingScreen> {
   late AbstractPlayerService _svc;
   double? _dragValue;
+  StreamSubscription<SequenceState?>? _sequenceSub;
 
   @override
   void initState() {
     super.initState();
     _svc = widget.playerService ?? PlayerService.instance;
+    // Playback stopping (queue finished/exhausted) clears the current
+    // source; if this screen is still open and on top, close it rather than
+    // leaving a blank now-playing view behind.
+    _sequenceSub = _svc.sequenceStateStream.listen((state) {
+      if (state?.currentSource?.tag != null) return;
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.isCurrent) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _sequenceSub?.cancel();
+    super.dispose();
   }
 
   String _format(Duration d) {
@@ -132,7 +151,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 StreamBuilder<PlayerState>(
                   stream: _svc.playerStateStream,
                   builder: (context, stateSnap) {
-                    final playing = stateSnap.data?.playing ?? false;
+                    final state = stateSnap.data;
+                    final playing = (state?.playing ?? false) &&
+                        state?.processingState != ProcessingState.completed;
                     return Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
