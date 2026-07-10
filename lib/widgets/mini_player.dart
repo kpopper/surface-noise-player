@@ -29,10 +29,10 @@ class MiniPlayer extends StatelessWidget {
               top: BorderSide(color: Theme.of(context).dividerColor),
             ),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
           child: Row(
             children: [
-              ArtThumbnail(artPath: svc.currentRelease?.artPath, size: 40),
+              ArtThumbnail(artPath: svc.currentRelease?.artPath, size: 56),
               const SizedBox(width: 12),
               Expanded(
                 child: GestureDetector(
@@ -45,12 +45,12 @@ class MiniPlayer extends StatelessWidget {
                       Text(item.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       if (item.album != null)
                         Text(item.album!,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            style: const TextStyle(fontSize: 13, color: Colors.grey)),
                     ],
                   ),
                 ),
@@ -65,14 +65,17 @@ class MiniPlayer extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
+                        iconSize: 30,
                         icon: const Icon(Icons.skip_previous),
                         onPressed: svc.hasPrevious ? svc.seekToPrevious : null,
                       ),
                       IconButton(
+                        iconSize: 34,
                         icon: Icon(playing ? Icons.pause : Icons.play_arrow),
                         onPressed: playing ? svc.pause : svc.play,
                       ),
                       IconButton(
+                        iconSize: 30,
                         icon: const Icon(Icons.skip_next),
                         onPressed: svc.hasNext ? svc.seekToNext : null,
                       ),
