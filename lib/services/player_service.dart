@@ -78,13 +78,19 @@ class PlayerService implements AbstractPlayerService {
   @override
   Future<void> playRelease(Release release, {int trackIndex = 0}) async {
     currentRelease = release;
-    // Availability is already shown visually in the release screen (greyed
-    // out, untappable), so skipped tracks here aren't individually announced
-    // — only the "nothing at all to play" case gets a message.
+    // The queue always spans the whole release (not just trackIndex onward)
+    // so skip previous/next reflects the release's track order rather than
+    // play history — you can skip back to an earlier track even if it was
+    // never played this session. Availability is already shown visually in
+    // the release screen (greyed out, untappable), so skipped tracks here
+    // aren't individually announced — only the "nothing at all to play" case
+    // gets a message.
     final playable = <Track>[];
-    for (var i = trackIndex; i < release.tracks.length; i++) {
+    var initialIndex = 0;
+    for (var i = 0; i < release.tracks.length; i++) {
       final track = release.tracks[i];
       if (await _bookmarks.isFileAvailable(track.path)) {
+        if (i < trackIndex) initialIndex++;
         playable.add(track);
       }
     }
@@ -93,11 +99,12 @@ class PlayerService implements AbstractPlayerService {
       await _stopPlayback();
       return;
     }
+    initialIndex = initialIndex.clamp(0, playable.length - 1);
     _loadedTracks = playable;
     final sources = _buildSources(release, playable);
     _manualLoadInProgress = true;
     try {
-      for (var index = 0; index < playable.length; index++) {
+      for (var index = initialIndex; index < playable.length; index++) {
         try {
           await player.setAudioSources(sources, initialIndex: index);
           // player.play()'s Future only resolves when playback later
