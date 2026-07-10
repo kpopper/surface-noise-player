@@ -88,8 +88,8 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Playback
 
-- Before playback starts, each requested track's file is checked for local availability; missing tracks (e.g. an undownloaded/evicted iCloud file) are skipped and a message is shown for each one, rather than being handed to the player
-- If no track in the release from the requested one onward is available, playback stops cleanly without looping or crashing
+- Before playback starts, each requested track's file is checked for local availability; missing tracks (e.g. an undownloaded/evicted iCloud file) are silently skipped rather than being handed to the player — availability is already shown visually in the release screen, so no message is shown per skipped track
+- If no track in the release from the requested one onward is available, a message is shown and playback stops cleanly without looping or crashing
 - If a track that exists on disk still fails to play (e.g. a corrupt file), a message is shown and playback automatically advances to the next track, up to a bounded number of consecutive failures before pausing
 - Manually skipping to the next or previous track shows the same unplayable message and cascades to the next track in that direction if it also can't be played
 - A cancelled/superseded playback request (e.g. tapping a second track before the first finishes loading) does not show an error message
@@ -120,6 +120,11 @@ writing a feature; remove or update it when behaviour changes.
 - The app bar has a manage button that opens the library management screen
 - The app bar has a refresh button; tapping it re-scans every selected release folder on disk, updating tracks, metadata, and artwork; activity timestamps are not changed
 - A release marked unavailable is shown in the list but cannot be tapped to open
+
+## Release screen
+
+- Each track's local availability (e.g. downloaded from iCloud or not) is checked when the screen opens
+- An unavailable track is shown greyed out and cannot be tapped to play
 
 ## Release card
 

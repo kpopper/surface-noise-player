@@ -5,6 +5,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 import '../models/release.dart';
 import '../services/abstract_player_service.dart';
+import '../services/bookmark_service.dart';
 import '../services/library_provider.dart';
 import '../services/player_service.dart';
 import '../widgets/tag_chip.dart';
@@ -12,7 +13,13 @@ import '../widgets/tag_chip.dart';
 class ReleaseScreen extends StatefulWidget {
   final Release release;
   final AbstractPlayerService? playerService;
-  const ReleaseScreen({super.key, required this.release, this.playerService});
+  final BookmarkService? bookmarkService;
+  const ReleaseScreen({
+    super.key,
+    required this.release,
+    this.playerService,
+    this.bookmarkService,
+  });
 
   @override
   State<ReleaseScreen> createState() => _ReleaseScreenState();
@@ -21,13 +28,30 @@ class ReleaseScreen extends StatefulWidget {
 class _ReleaseScreenState extends State<ReleaseScreen> {
   late Release _release;
   late AbstractPlayerService _playerSvc;
+  late BookmarkService _bookmarks;
   final _tagController = TextEditingController();
+  Set<String> _unavailablePaths = {};
 
   @override
   void initState() {
     super.initState();
     _release = widget.release;
     _playerSvc = widget.playerService ?? PlayerService.instance;
+    _bookmarks = widget.bookmarkService ?? BookmarkService.instance;
+    _loadAvailability();
+  }
+
+  Future<void> _loadAvailability() async {
+    final results = await Future.wait(
+      _release.tracks.map((t) => _bookmarks.isFileAvailable(t.path)),
+    );
+    if (!mounted) return;
+    setState(() {
+      _unavailablePaths = {
+        for (var i = 0; i < _release.tracks.length; i++)
+          if (!results[i]) _release.tracks[i].path,
+      };
+    });
   }
 
   @override
@@ -166,25 +190,28 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                     ...List.generate(_release.tracks.length, (i) {
                       final track = _release.tracks[i];
                       final isPlaying = isThisRelease && currentPath == track.path;
+                      final isUnavailable = _unavailablePaths.contains(track.path);
+                      final dimColor = Colors.grey[400];
                       return ListTile(
+                        enabled: !isUnavailable,
                         leading: isPlaying
                             ? const Icon(Icons.equalizer, color: Colors.deepOrange)
                             : Text(
                                 '${track.trackNumber}',
-                                style: const TextStyle(color: Colors.grey),
+                                style: TextStyle(color: isUnavailable ? dimColor : Colors.grey),
                               ),
                         title: Text(
                           track.title,
                           style: TextStyle(
                             fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-                            color: isPlaying ? Colors.deepOrange : null,
+                            color: isUnavailable ? dimColor : (isPlaying ? Colors.deepOrange : null),
                           ),
                         ),
                         subtitle: track.artist != null
                             ? Text(track.artist!,
-                                style: const TextStyle(fontSize: 12))
+                                style: TextStyle(fontSize: 12, color: isUnavailable ? dimColor : null))
                             : null,
-                        onTap: () => _playerSvc.playTrack(_release, i),
+                        onTap: isUnavailable ? null : () => _playerSvc.playTrack(_release, i),
                       );
                     }),
                   ],

@@ -78,16 +78,18 @@ class PlayerService implements AbstractPlayerService {
   @override
   Future<void> playRelease(Release release, {int trackIndex = 0}) async {
     currentRelease = release;
+    // Availability is already shown visually in the release screen (greyed
+    // out, untappable), so skipped tracks here aren't individually announced
+    // — only the "nothing at all to play" case gets a message.
     final playable = <Track>[];
     for (var i = trackIndex; i < release.tracks.length; i++) {
       final track = release.tracks[i];
       if (await _bookmarks.isFileAvailable(track.path)) {
         playable.add(track);
-      } else {
-        _emitErrorMessage(track.title);
       }
     }
     if (playable.isEmpty) {
+      _emitErrorMessage(null);
       await _stopPlayback();
       return;
     }
