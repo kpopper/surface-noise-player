@@ -26,6 +26,9 @@ writing a feature; remove or update it when behaviour changes.
 
 - The library screen shows only selected releases, not all subfolders of the root
 - A management screen lists every direct subfolder of the root as a checkbox list, sorted alphabetically
+- The management screen has a search field that filters the folder list to names containing the search text (case-insensitive); clearing the search restores the full list
+- In the management screen, the search field loses focus (closing the keyboard) when the folder list below it is scrolled or tapped
+- In the management screen, a folder currently selected (in the library) is shown in bold; unselected folders are shown in normal weight, so selected albums stand out from new/unselected ones
 - Selecting a different folder resets the database
 - Selecting a folder scans it, persists the release to the database, triggers an iCloud download of its audio files, and immediately shows it in the library
 - Deselecting a folder removes it from the selected releases, evicts its audio files from iCloud storage, and removes it from the library
