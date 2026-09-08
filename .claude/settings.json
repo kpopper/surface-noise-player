@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git fetch *)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git pull *)",
+      "Bash(git push *)",
+      "Bash(git diff *)",
+      "Bash(gh pr *)",
+      "Bash(flutter run *)",
+      "Bash(flutter pub *)",
+      "Bash(flutter test *)",
+      "Bash(flutter analyze *)",
+      "Skill(loop)",
+      "Skill(loop:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); if echo \"$f\" | grep -qE '\\.dart$'; then cd \"/Users/ian/Dev/Surface Noise Player\" && out=$(flutter test 2>&1); last=$(echo \"$out\" | tail -1); jq -n --arg m \"flutter test: $last\" '{\"systemMessage\": $m}'; fi",
+            "timeout": 120,
+            "statusMessage": "Running flutter test..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if echo \"$cmd\" | grep -q 'gh pr create'; then pending=$(grep '^- \\[ \\]' \"/Users/ian/Dev/Surface Noise Player/FEATURES.md\" 2>/dev/null); if [ -n \"$pending\" ]; then jq -n --arg m \"FEATURES.md still has pending items — check whether any should be moved to Completed:\\n$pending\" '{\"systemMessage\": $m}'; fi; fi",
+            "timeout": 10,
+            "statusMessage": "Checking FEATURES.md..."
+          }
+        ]
+      }
+    ]
+  }
+}
