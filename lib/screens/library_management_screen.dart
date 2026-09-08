@@ -14,6 +14,14 @@ class _LibraryManagementScreenState extends State<LibraryManagementScreen> {
   List<FolderInfo>? _folders;
   final Set<String> _loadingPaths = {};
   final Set<String> _pendingDeselects = {};
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -105,27 +113,78 @@ class _LibraryManagementScreenState extends State<LibraryManagementScreen> {
             );
           }
 
-          return ListView.builder(
-            itemCount: _folders!.length,
-            itemBuilder: (context, i) {
-              final folder = _folders![i];
-              final isLoading = _loadingPaths.contains(folder.path);
-              final isChecked = folder.isSelected && !_pendingDeselects.contains(folder.path);
-              return ListTile(
-                title: Text(folder.name),
-                onTap: () => _toggle(folder),
-                trailing: isLoading
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Checkbox(
-                        value: isChecked,
-                        onChanged: (_) => _toggle(folder),
-                      ),
-              );
-            },
+          final query = _query.trim().toLowerCase();
+          final visibleFolders = query.isEmpty
+              ? _folders!
+              : _folders!.where((f) => f.name.toLowerCase().contains(query)).toList();
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search albums',
+                    prefixIcon: const Icon(Icons.search),
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
+                          ),
+                  ),
+                  onChanged: (value) => setState(() => _query = value),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => FocusScope.of(context).unfocus(),
+                  child: visibleFolders.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No albums match your search',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        )
+                      : ListView.builder(
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                          itemCount: visibleFolders.length,
+                          itemBuilder: (context, i) {
+                            final folder = visibleFolders[i];
+                            final isLoading = _loadingPaths.contains(folder.path);
+                            final isChecked =
+                                folder.isSelected && !_pendingDeselects.contains(folder.path);
+                            return ListTile(
+                              title: Text(
+                                folder.name,
+                                style: TextStyle(
+                                  fontWeight: isChecked ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                              onTap: () => _toggle(folder),
+                              trailing: isLoading
+                                  ? const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : Checkbox(
+                                      value: isChecked,
+                                      onChanged: (_) => _toggle(folder),
+                                    ),
+                            );
+                          },
+                        ),
+                ),
+              ),
+            ],
           );
         },
       ),
