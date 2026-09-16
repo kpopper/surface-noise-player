@@ -36,8 +36,12 @@ class LibraryProvider extends ChangeNotifier {
       _sortByActivity(_releases);
       loading = false;
       notifyListeners();
-      // Fire-and-forget background tasks.
-      _refreshDownloadState();
+      // Fire-and-forget background task.
+      // No longer force-downloading every selected release's files on
+      // launch here (removed _refreshDownloadState) — for the per-track
+      // download spike, downloads are requested on demand by PlayerService
+      // instead, which is also the direction of the wider "no eager
+      // downloads" redesign this spike is de-risking.
       _refreshArtwork();
     }
   }
@@ -123,18 +127,6 @@ class LibraryProvider extends ChangeNotifier {
           lastActivityAt: r.lastActivityAt,
           isAvailable: r.isAvailable,
         );
-        changed = true;
-      }
-    }
-    if (changed) notifyListeners();
-  }
-
-  Future<void> _refreshDownloadState() async {
-    var changed = false;
-    for (var i = 0; i < _releases.length; i++) {
-      final available = await _bookmarks.downloadRelease(_releases[i].folderPath);
-      if (_releases[i].isAvailable != available) {
-        _releases[i] = _releases[i].copyWith(isAvailable: available);
         changed = true;
       }
     }

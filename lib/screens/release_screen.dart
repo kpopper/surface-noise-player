@@ -65,7 +65,8 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
     final lib = context.read<LibraryProvider>();
     await lib.addTagToRelease(_release, tag.trim().toLowerCase());
     // Refresh local state from provider
-    final updated = lib.allReleases.firstWhere((r) => r.folderPath == _release.folderPath);
+    final updated =
+        lib.allReleases.firstWhere((r) => r.folderPath == _release.folderPath);
     setState(() => _release = updated);
     _tagController.clear();
   }
@@ -73,7 +74,8 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
   Future<void> _removeTag(String tag) async {
     final lib = context.read<LibraryProvider>();
     await lib.removeTagFromRelease(_release, tag);
-    final updated = lib.allReleases.firstWhere((r) => r.folderPath == _release.folderPath);
+    final updated =
+        lib.allReleases.firstWhere((r) => r.folderPath == _release.folderPath);
     setState(() => _release = updated);
   }
 
@@ -88,7 +90,8 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Add tag', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('Add tag',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             FutureBuilder<List<String>>(
               future: context.read<LibraryProvider>().allTags(),
@@ -99,13 +102,15 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                 if (existing.isNotEmpty) {
                   return Wrap(
                     spacing: 8,
-                    children: existing.map((t) => ActionChip(
-                      label: Text(t),
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _addTag(t);
-                      },
-                    )).toList(),
+                    children: existing
+                        .map((t) => ActionChip(
+                              label: Text(t),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _addTag(t);
+                              },
+                            ))
+                        .toList(),
                   );
                 }
                 return const SizedBox.shrink();
@@ -148,73 +153,102 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
             child: StreamBuilder<SequenceState?>(
               stream: _playerSvc.sequenceStateStream,
               builder: (context, snap) {
-                final currentPath = snap.data?.currentSource?.tag is MediaItem
-                    ? (snap.data!.currentSource!.tag as MediaItem).id
-                    : null;
-                final isThisRelease = _playerSvc.currentRelease?.folderPath == _release.folderPath;
+                // currentTrack is set as soon as a track is requested, even
+                // before it's downloaded and handed to just_audio — fall
+                // back to it (refreshed via waitingForDownloadStream below)
+                // so the row highlights immediately on tap, not only once
+                // the track actually starts playing.
+                final tag = snap.data?.currentSource?.tag as MediaItem?;
+                final isThisRelease = _playerSvc.currentRelease?.folderPath ==
+                    _release.folderPath;
 
-                return ListView(
-                  children: [
-                    if (_release.artPath != null)
-                      Image.file(
-                        File(_release.artPath!),
-                        width: double.infinity,
-                        fit: BoxFit.fitWidth,
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 4,
-                              children: [
-                                ..._release.tags.map((t) => TagChip(
-                                  label: t,
-                                  onDeleted: () => _removeTag(t),
-                                )),
-                                ActionChip(
-                                  avatar: const Icon(Icons.add, size: 16),
-                                  label: const Text('Add tag'),
-                                  onPressed: _showAddTagDialog,
-                                ),
-                              ],
-                            ),
+                return StreamBuilder<bool>(
+                  stream: _playerSvc.waitingForDownloadStream,
+                  initialData: _playerSvc.isWaitingForDownload,
+                  builder: (context, waitingSnap) {
+                    final currentPath = tag?.id ??
+                        (isThisRelease ? _playerSvc.currentTrack?.path : null);
+                    final isWaiting = waitingSnap.data ?? false;
+
+                    return ListView(
+                      children: [
+                        if (_release.artPath != null)
+                          Image.file(
+                            File(_release.artPath!),
+                            width: double.infinity,
+                            fit: BoxFit.fitWidth,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink(),
                           ),
-                        ],
-                      ),
-                    ),
-                    const Divider(),
-                    ...List.generate(_release.tracks.length, (i) {
-                      final track = _release.tracks[i];
-                      final isPlaying = isThisRelease && currentPath == track.path;
-                      final isUnavailable = _unavailablePaths.contains(track.path);
-                      final dimColor = Colors.grey[400];
-                      return ListTile(
-                        enabled: !isUnavailable,
-                        leading: isPlaying
-                            ? const Icon(Icons.equalizer, color: Colors.deepOrange)
-                            : Text(
-                                '${track.trackNumber}',
-                                style: TextStyle(color: isUnavailable ? dimColor : Colors.grey),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: [
+                                    ..._release.tags.map((t) => TagChip(
+                                          label: t,
+                                          onDeleted: () => _removeTag(t),
+                                        )),
+                                    ActionChip(
+                                      avatar: const Icon(Icons.add, size: 16),
+                                      label: const Text('Add tag'),
+                                      onPressed: _showAddTagDialog,
+                                    ),
+                                  ],
+                                ),
                               ),
-                        title: Text(
-                          track.title,
-                          style: TextStyle(
-                            fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-                            color: isUnavailable ? dimColor : (isPlaying ? Colors.deepOrange : null),
+                            ],
                           ),
                         ),
-                        subtitle: track.artist != null
-                            ? Text(track.artist!,
-                                style: TextStyle(fontSize: 12, color: isUnavailable ? dimColor : null))
-                            : null,
-                        onTap: isUnavailable ? null : () => _playerSvc.playTrack(_release, i),
-                      );
-                    }),
-                  ],
+                        const Divider(),
+                        ...List.generate(_release.tracks.length, (i) {
+                          final track = _release.tracks[i];
+                          final isPlaying =
+                              isThisRelease && currentPath == track.path;
+                          // Not yet downloaded locally — still tappable; playing it
+                          // triggers a download and waits for it (see PlayerService).
+                          final isUnavailable =
+                              _unavailablePaths.contains(track.path);
+                          return ListTile(
+                            leading: isPlaying && isWaiting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : isPlaying
+                                    ? const Icon(Icons.equalizer,
+                                        color: Colors.deepOrange)
+                                    : isUnavailable
+                                        ? Icon(Icons.cloud_download_outlined,
+                                            color: Colors.grey[500], size: 20)
+                                        : Text('${track.trackNumber}',
+                                            style: const TextStyle(
+                                                color: Colors.grey)),
+                            title: Text(
+                              track.title,
+                              style: TextStyle(
+                                fontWeight: isPlaying
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isPlaying ? Colors.deepOrange : null,
+                              ),
+                            ),
+                            subtitle: track.artist != null
+                                ? Text(track.artist!,
+                                    style: const TextStyle(fontSize: 12))
+                                : null,
+                            onTap: () => _playerSvc.playTrack(_release, i),
+                          );
+                        }),
+                      ],
+                    );
+                  },
                 );
               },
             ),

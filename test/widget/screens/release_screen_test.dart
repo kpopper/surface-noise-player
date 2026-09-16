@@ -6,7 +6,7 @@ import '../../helpers/fake_bookmark_service.dart';
 import '../../helpers/fake_player_service.dart';
 
 void main() {
-  testWidgets('unavailable tracks are greyed out and cannot be tapped to play', (tester) async {
+  testWidgets('unavailable tracks show a cloud icon but can still be tapped to play', (tester) async {
     final release = Release(
       folderPath: '/music/Test',
       name: 'Test',
@@ -32,12 +32,16 @@ void main() {
     final unavailableTile = tester.widget<ListTile>(
       find.ancestor(of: find.text('Track Two'), matching: find.byType(ListTile)),
     );
-    expect(unavailableTile.enabled, isFalse);
-    expect(unavailableTile.onTap, isNull);
+    expect(unavailableTile.enabled, isTrue);
+    expect(unavailableTile.onTap, isNotNull);
+    expect(
+      find.descendant(of: find.byWidget(unavailableTile), matching: find.byIcon(Icons.cloud_download_outlined)),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('Track Two'));
     await tester.pump();
-    expect(fakePlayer.lastPlayedTrackIndex, isNull);
+    expect(fakePlayer.lastPlayedTrackIndex, 1);
 
     await tester.tap(find.text('Track One'));
     await tester.pump();

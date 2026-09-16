@@ -17,8 +17,7 @@ writing a feature; remove or update it when behaviour changes.
 - Track numbers are read from embedded metadata; if absent, tracks are numbered in alphabetical filename order starting from 1
 - Leading track-number prefixes are stripped from filenames to produce the track title (e.g. `01 - Song.mp3` → `Song`, `02. Another.flac` → `Another`)
 - A previously selected root folder is remembered across app restarts
-- On app launch, selected releases are loaded from the database without re-scanning the file system
-- On app launch, iCloud download is requested for all selected releases; if a download request fails, the release is marked unavailable
+- On app launch, selected releases are loaded from the database without re-scanning the file system and without requesting any iCloud downloads — tracks download on demand when playback is requested (see Playback)
 - When a release folder is selected in the management screen, a full scan runs for that folder: metadata is extracted, artwork is resolved, and the result is persisted to the database
 - A newly selected folder is assigned an activity timestamp; a folder that was previously selected retains its existing timestamp
 
@@ -34,7 +33,6 @@ writing a feature; remove or update it when behaviour changes.
 - Deselecting a folder removes it from the selected releases, evicts its audio files from iCloud storage, and removes it from the library
 - Tags and play history are preserved when a folder is deselected — they remain in the database keyed by folder path
 - Selected releases persist across app restarts
-- A release that fails its iCloud download request on app launch is shown in the library but cannot be opened
 
 ## Library sorting
 
@@ -91,13 +89,18 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Playback
 
-- Before playback starts, each track in the release is checked for local availability; missing tracks (e.g. an undownloaded/evicted iCloud file) are silently skipped rather than being handed to the player — availability is already shown visually in the release screen, so no message is shown per skipped track
-- If no track in the release is available, a message is shown and playback stops cleanly without looping or crashing
-- The full playback queue is the release's available tracks in track order, regardless of which track playback started on — skip previous/next moves through the release's track order, not through play history, so skipping back from a track works even if the earlier track was never played this session
-- If a track that exists on disk still fails to play (e.g. a corrupt file), a message is shown and playback automatically advances to the next track, up to a bounded number of consecutive failures before pausing
-- Manually skipping to the next or previous track shows the same unplayable message and cascades to the next track in that direction if it also can't be played
-- A cancelled/superseded playback request (e.g. tapping a second track before the first finishes loading) does not show an error message
-- Reaching the end of the release's last available track stops playback and closes the mini player, rather than leaving it showing the last track as playing
+- Tracks are loaded and played one at a time, in release track order, regardless of local availability at the moment playback starts — the full track list is the queue, not just the currently-available subset
+- Before loading a track, its local availability is checked; if it is not locally available, an iCloud download is requested for it and playback pauses (showing a buffering/waiting state) until it becomes available, then playback starts automatically without further user action
+- The mini player (and the Now Playing screen, if open) appears as soon as a track is requested, not only once it is actually loaded into the player — tapping a track that needs to download gives immediate visual feedback rather than appearing to do nothing until the download finishes
+- While the player is waiting for a track to download, a spinner is shown over the album artwork in both the mini player and the Now Playing screen, and over the currently-selected track's row in the release screen
+- While one track plays, a download is proactively requested for the next track in the queue, so it is more likely to already be available by the time it's needed
+- If a requested download does not complete within a timeout, a message is shown and playback automatically advances to the next track, as if the track had failed to play
+- If a track that exists on disk still fails to play (e.g. a corrupt file), a message is shown and playback automatically advances to the next track
+- Manually skipping to the next or previous track applies the same download-wait-then-play behaviour as natural advancement
+- A cancelled/superseded playback request (e.g. tapping a second track, or skipping, before the previous one finishes loading or downloading) does not show an error message and does not leave a stale buffering spinner showing
+- Skip previous/next moves through the release's track order, not through play history, so skipping back from a track works even if the earlier track was never played this session
+- If no track in the release is available and none can be downloaded, a message is shown and playback stops cleanly without looping or crashing
+- Reaching the end of the release's last track stops playback and closes the mini player, rather than leaving it showing the last track as playing
 - If playback stops because no further track could be played, the mini player closes the same way
 
 ## Mini player
@@ -130,7 +133,7 @@ writing a feature; remove or update it when behaviour changes.
 ## Release screen
 
 - Each track's local availability (e.g. downloaded from iCloud or not) is checked when the screen opens
-- An unavailable track is shown greyed out and cannot be tapped to play
+- A track not currently available locally shows a small cloud icon instead of its track number, but can still be tapped to play — tapping it triggers the download-wait-then-play behaviour described under Playback
 
 ## Release card
 

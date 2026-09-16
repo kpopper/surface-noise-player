@@ -4,6 +4,7 @@
 
 - [ ] ZIP import — auto-scan iCloud Drive Downloads for ZIPs containing audio files; extract into library with ID3-derived `Artist - Album` folder names; archive source ZIP to `_zips/`; auto-select the new release
 - [ ] Add swipe gestures to navigate from mini player to Now playing and to minimise Now Playing window
+- [ ] Per-track download-then-play spike — play a release without pre-downloading it; each track is requested from iCloud and downloaded just in time, with a spinner over the artwork while waiting, auto-resuming once available; tap-to-play on release screen no longer blocked by availability. Implemented and unit/widget tested; still needs on-device validation of real iCloud download timing before deciding whether to build on it further (see the wider "library = full directory, no selection" idea it's de-risking)
 
 ## Completed
 

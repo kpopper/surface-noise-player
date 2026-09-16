@@ -11,15 +11,22 @@ class FakePlayerService implements AbstractPlayerService {
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration?>.broadcast();
   final _errorMessageController = StreamController<String>.broadcast();
+  final _waitingController = StreamController<bool>.broadcast();
 
   @override
   Release? currentRelease;
+
+  @override
+  Track? currentTrack;
 
   @override
   bool hasPrevious = false;
 
   @override
   bool hasNext = false;
+
+  @override
+  bool isWaitingForDownload = false;
 
   // Recorded calls
   bool playCalled = false;
@@ -45,6 +52,9 @@ class FakePlayerService implements AbstractPlayerService {
   Stream<String> get errorMessageStream => _errorMessageController.stream;
 
   @override
+  Stream<bool> get waitingForDownloadStream => _waitingController.stream;
+
+  @override
   Future<void> play() async => playCalled = true;
 
   @override
@@ -62,6 +72,7 @@ class FakePlayerService implements AbstractPlayerService {
   @override
   Future<void> playRelease(Release release, {int trackIndex = 0}) async {
     currentRelease = release;
+    currentTrack = release.tracks.isNotEmpty ? release.tracks[trackIndex] : null;
     lastPlayedRelease = release;
     lastPlayedTrackIndex = trackIndex;
   }
@@ -97,11 +108,17 @@ class FakePlayerService implements AbstractPlayerService {
     _errorMessageController.add(message);
   }
 
+  void emitWaitingForDownload(bool waiting) {
+    isWaitingForDownload = waiting;
+    _waitingController.add(waiting);
+  }
+
   void dispose() {
     _sequenceStateController.close();
     _playerStateController.close();
     _positionController.close();
     _durationController.close();
     _errorMessageController.close();
+    _waitingController.close();
   }
 }

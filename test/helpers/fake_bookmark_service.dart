@@ -4,10 +4,12 @@ class FakeBookmarkService implements BookmarkService {
   String? pathToReturn;
   String? lastPickedPath;
   bool downloadResult = true;
+  bool downloadFileResult = true;
   bool awaitDownloadResult = true;
   String? lastDownloadPath;
   String? lastAwaitDownloadPath;
   String? lastEvictPath;
+  final List<String> downloadFileCalls = [];
   Set<String> unavailablePaths = {};
 
   @override
@@ -26,6 +28,12 @@ class FakeBookmarkService implements BookmarkService {
   Future<bool> downloadRelease(String folderPath) async {
     lastDownloadPath = folderPath;
     return downloadResult;
+  }
+
+  @override
+  Future<bool> downloadFile(String path) async {
+    downloadFileCalls.add(path);
+    return downloadFileResult;
   }
 
   @override

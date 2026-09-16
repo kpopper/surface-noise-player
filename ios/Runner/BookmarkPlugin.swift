@@ -49,6 +49,13 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                 return
             }
             downloadRelease(path: path, result: result)
+        case "downloadFile":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
+                return
+            }
+            downloadFile(path: path, result: result)
         case "awaitDownload":
             guard let args = call.arguments as? [String: Any],
                   let path = args["path"] as? String else {
@@ -282,6 +289,22 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                 }
             }
             DispatchQueue.main.async { result(!failed) }
+        }
+    }
+
+    // Requests download of a single file (not a whole folder). Fires the
+    // request and returns immediately — use isFileAvailable to poll for
+    // completion, rather than blocking here.
+    private func downloadFile(path: String, result: @escaping FlutterResult) {
+        DispatchQueue.global(qos: .utility).async {
+            let fm = FileManager.default
+            let url = URL(fileURLWithPath: path)
+            do {
+                try fm.startDownloadingUbiquitousItem(at: url)
+                DispatchQueue.main.async { result(true) }
+            } catch {
+                DispatchQueue.main.async { result(false) }
+            }
         }
     }
 
