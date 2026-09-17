@@ -316,21 +316,6 @@ class DatabaseService {
     );
   }
 
-  // Targeted single-row update — does NOT touch metadata_read. Used to write
-  // a track's real (file-derived) title/artist/trackNumber without
-  // disturbing the rest of the release's track rows (unlike saveTracks,
-  // which deletes and reinserts every track for the folder).
-  Future<void> updateTrackFileMetadata(String filePath,
-      {required String title, required int trackNumber, String? artist}) async {
-    final d = await db;
-    await d.update(
-      'tracks',
-      {'title': title, 'track_number': trackNumber, 'artist': artist},
-      where: 'file_path = ?',
-      whereArgs: [filePath],
-    );
-  }
-
   // Writes back a track's real (file-derived) metadata and marks it as read.
   // No call site yet — this is the API a later phase calls once a track is
   // first played, without needing any further changes to this layer.

@@ -316,46 +316,6 @@ void main() {
     });
   });
 
-  group('updateTrackFileMetadata', () {
-    const folderPath = '/music/album';
-    const filePath = '/music/album/01.mp3';
-
-    test('updates title, trackNumber, and artist', () async {
-      await db.saveTracks(folderPath, [
-        const Track(path: filePath, title: 'Old', trackNumber: 1),
-      ]);
-      await db.updateTrackFileMetadata(filePath,
-          title: 'New', trackNumber: 3, artist: 'Bob');
-      final row = (await db.loadTracks(folderPath)).first;
-      expect(row['title'], 'New');
-      expect(row['track_number'], 3);
-      expect(row['artist'], 'Bob');
-    });
-
-    test('does not set metadata_read', () async {
-      await db.saveTracks(folderPath, [
-        const Track(path: filePath, title: 'Old', trackNumber: 1),
-      ]);
-      await db.updateTrackFileMetadata(filePath, title: 'New', trackNumber: 1);
-      final row = (await db.loadTracks(folderPath)).first;
-      expect(row['metadata_read'], 0);
-    });
-
-    test('does not affect other tracks in the same folder', () async {
-      await db.saveTracks(folderPath, [
-        const Track(path: filePath, title: 'One', trackNumber: 1),
-        const Track(path: '/music/album/02.mp3', title: 'Two', trackNumber: 2),
-      ]);
-      await db.updateTrackFileMetadata(filePath,
-          title: 'Updated', trackNumber: 1);
-      final rows = await db.loadTracks(folderPath);
-      expect(
-          rows.firstWhere(
-              (r) => r['file_path'] == '/music/album/02.mp3')['title'],
-          'Two');
-    });
-  });
-
   group('markTrackMetadataRead', () {
     const folderPath = '/music/album';
     const filePath = '/music/album/01.mp3';

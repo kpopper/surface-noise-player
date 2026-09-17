@@ -19,6 +19,7 @@ writing a feature; remove or update it when behaviour changes.
 - A release already known to the database and still present on disk is left untouched by a sync — its tracks, metadata, and artwork are not re-scanned
 - When a release is newly discovered, a track is added for every audio file in its folder, ordered by filename, with a title derived from the filename (leading track-number prefixes like `01 - ` or `02. ` are stripped); no other metadata is read yet
 - When a release is newly discovered, only its first track (by filename) is downloaded; its embedded album artist/album title metadata is read from it, and it is evicted again afterwards — the rest of the release's tracks are left untouched
+- Reading the first track's embedded metadata during a scan only informs the release-level album artist/album title — the track's own title/artist/track-number stay filename-derived, the same as every other track, until it is actually played (see Audio metadata)
 - If a release's first-track download times out, the release is still created (using filename-derived tracks and the folder name as a fallback), and is retried on a future sync rather than left permanently unresolved
 - Album artwork for a newly discovered release is resolved from a folder image file first (no download needed), then from the first track's embedded artwork once it has downloaded; a MusicBrainz lookup is not attempted during a scan
 - A newly discovered release is assigned an activity timestamp at discovery time, so it sorts to the top of the library until played

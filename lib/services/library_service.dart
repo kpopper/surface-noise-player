@@ -226,12 +226,12 @@ class LibraryService {
         : folderName;
     await _db.saveRelease(folderPath, name,
         artPath: artPath, albumTitle: albumTitle, albumArtist: albumArtist);
-    await _db.updateTrackFileMetadata(firstTrackPath,
-        title: meta.title?.isNotEmpty == true
-            ? meta.title!
-            : quickTracks.first.title,
-        trackNumber: meta.trackNumber ?? quickTracks.first.trackNumber,
-        artist: meta.artist?.isNotEmpty == true ? meta.artist : null);
+    // Deliberately not persisted to the track row: only album-level info
+    // (name/art/albumArtist/albumTitle above) comes from this scan. The
+    // first track's own title/artist stay filename-derived, same as every
+    // other track, until it's actually played (see Audio metadata) —
+    // otherwise it would show real metadata while its siblings still show
+    // filenames.
     await _db.markFirstTrackScanned(folderPath);
   }
 

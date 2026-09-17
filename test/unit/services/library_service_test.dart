@@ -172,6 +172,24 @@ void main() {
         expect(row['name'], 'The Artist - Great Album');
       });
 
+      test('does not persist the first track\'s own title/artist during a scan',
+          () async {
+        // Regression: the first-track read that resolves album-level
+        // name/art was also writing its real title/artist/trackNumber back
+        // to that one track's row, so it showed corrected metadata while
+        // every other track in the release still showed its filename guess
+        // — metadata should stay filename-derived for every track,
+        // including the first, until it's actually played.
+        final albumDir = await createAlbum('Album', ['01 - Filename.mp3']);
+        fakeMetadata.responses['${albumDir.path}/01 - Filename.mp3'] =
+            const AudioMetadata(title: 'Real Title', artist: 'Real Artist');
+        await service.syncLibrary(tempRoot.path);
+        final track = (await dbService.loadTracks(albumDir.path)).first;
+        expect(track['title'], 'Filename');
+        expect(track['artist'], isNull);
+        expect(track['metadata_read'], 0);
+      });
+
       test('release name falls back to folder name when metadata is absent',
           () async {
         final albumDir = await createAlbum('My Folder Name', ['01.mp3']);
