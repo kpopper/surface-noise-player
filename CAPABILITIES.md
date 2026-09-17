@@ -131,6 +131,7 @@ writing a feature; remove or update it when behaviour changes.
 - If the release is removed from the library while this screen is open (e.g. its folder disappears in a sync), the screen closes itself automatically
 - If the release has no known tracks yet, the track list and "Play all" button are hidden and a message is shown instead; both appear as soon as tracks are known
 - Each track's local availability (e.g. downloaded from iCloud or not) is checked when the screen opens
+- While at least one track is not locally available, its availability is re-checked periodically (every 2 seconds) so a track that finishes downloading in the background — including one that isn't the currently-playing track — updates from a cloud icon to its track number without needing the screen to be reopened; this stops once every track is available
 - A track's leading icon shows, in priority order: a spinner if it's the currently-playing track and its download is still in progress, an equalizer icon if it's the currently-playing track, a cloud icon if it's known but not locally available, or its track number if it's locally available
 - All tracks are tappable regardless of local availability — tapping one that isn't downloaded triggers the same download-then-play behaviour described under Playback
 

@@ -71,6 +71,53 @@ void main() {
       await tester.pump();
       expect(fakePlayer.lastPlayedTrackIndex, 0);
     });
+
+    testWidgets(
+        'updates from a cloud icon to the track number once a background download finishes',
+        (tester) async {
+      // Regression: availability was only ever checked once (on open, or
+      // when the track list itself changed) — a track that finished
+      // downloading in the background while a different track played kept
+      // showing a stale cloud icon until something else happened to force
+      // a re-check.
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [
+          Track(path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1),
+        ],
+        tags: const [],
+      );
+      final fakeBookmarks = FakeBookmarkService()
+        ..unavailablePaths = {'/music/Test/01.mp3'};
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            home:
+                ReleaseScreen(release: release, bookmarkService: fakeBookmarks),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
+      expect(find.text('1'), findsNothing);
+
+      // Simulate the download completing in the background (not via any
+      // playback or provider event on this track).
+      fakeBookmarks.unavailablePaths = {};
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+
+      expect(find.byIcon(Icons.cloud_download_outlined), findsNothing);
+      expect(find.text('1'), findsOneWidget);
+    });
   });
 
   group('live updates', () {

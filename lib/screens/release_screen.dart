@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,15 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
   List<String> _lastCheckedTrackPaths = [];
   bool _closing = false;
 
+  // Availability isn't part of the database — it's a live iCloud filesystem
+  // property that can change in the background as a requested download
+  // completes, independently of anything LibraryProvider would notify about.
+  // While at least one track is still marked unavailable, poll for changes
+  // so the icon catches up once it actually finishes downloading, rather
+  // than staying stuck on whatever was true the moment it was last checked.
+  // Cancels itself once nothing is left to wait for.
+  Timer? _availabilityPollTimer;
+
   @override
   void initState() {
     super.initState();
@@ -61,6 +71,25 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
           if (!results[i]) release.tracks[i].path,
       };
     });
+    if (_unavailablePaths.isEmpty) {
+      _availabilityPollTimer?.cancel();
+      _availabilityPollTimer = null;
+    } else {
+      _availabilityPollTimer ??= Timer.periodic(
+          const Duration(seconds: 2), (_) => _pollAvailability());
+    }
+  }
+
+  void _pollAvailability() {
+    if (!mounted) return;
+    final matches = context
+        .read<LibraryProvider>()
+        .allReleases
+        .where((r) => r.folderPath == widget.release.folderPath);
+    if (matches.isEmpty) {
+      return; // release vanished; build()'s auto-close handles this
+    }
+    _loadAvailability(matches.first);
   }
 
   // The release is no longer in the library (its folder disappeared in a
@@ -80,6 +109,7 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
 
   @override
   void dispose() {
+    _availabilityPollTimer?.cancel();
     _tagController.dispose();
     super.dispose();
   }
