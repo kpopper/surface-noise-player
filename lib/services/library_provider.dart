@@ -154,4 +154,32 @@ class LibraryProvider extends ChangeNotifier {
   }
 
   Future<List<String>> allTags() => _svc.allTags();
+
+  // Persists a track's freshly-read metadata (see PlayerService) and updates
+  // the in-memory copy so a release screen watching this provider reflects
+  // it immediately, without waiting for a sync.
+  Future<void> updateTrackMetadata(String folderPath, Track track) async {
+    await _svc.updateTrackMetadata(track.path,
+        title: track.title,
+        trackNumber: track.trackNumber,
+        artist: track.artist);
+    final index = _releases.indexWhere((r) => r.folderPath == folderPath);
+    if (index < 0) return;
+    final release = _releases[index];
+    final trackIndex = release.tracks.indexWhere((t) => t.path == track.path);
+    if (trackIndex < 0) return;
+    final updatedTracks = [...release.tracks];
+    updatedTracks[trackIndex] = track;
+    _releases[index] = Release(
+      folderPath: release.folderPath,
+      name: release.name,
+      tracks: updatedTracks,
+      tags: release.tags,
+      artPath: release.artPath,
+      albumTitle: release.albumTitle,
+      albumArtist: release.albumArtist,
+      lastActivityAt: release.lastActivityAt,
+    );
+    notifyListeners();
+  }
 }

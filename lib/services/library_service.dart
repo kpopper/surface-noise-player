@@ -92,6 +92,7 @@ class LibraryService {
                 title: row['title'] as String,
                 trackNumber: row['track_number'] as int,
                 artist: row['artist'] as String?,
+                metadataRead: (row['metadata_read'] as int) == 1,
               ))
           .toList();
       // Validate the stored art path — paths from previous installs or

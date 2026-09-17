@@ -27,6 +27,10 @@ class FakeLibraryService implements LibraryService {
   String? lastRecordedPlayPath;
   int loadLibraryCallCount = 0;
   List<String> syncedRoots = [];
+  String? lastUpdatedTrackPath;
+  String? lastUpdatedTrackTitle;
+  int? lastUpdatedTrackNumber;
+  String? lastUpdatedTrackArtist;
 
   @override
   Future<String?> getSavedRoot() async => rootToReturn;
@@ -55,9 +59,12 @@ class FakeLibraryService implements LibraryService {
 
   @override
   Future<void> updateTrackMetadata(String filePath,
-      {required String title,
-      required int trackNumber,
-      String? artist}) async {}
+      {required String title, required int trackNumber, String? artist}) async {
+    lastUpdatedTrackPath = filePath;
+    lastUpdatedTrackTitle = title;
+    lastUpdatedTrackNumber = trackNumber;
+    lastUpdatedTrackArtist = artist;
+  }
 
   @override
   Future<List<String>> allTags() async => tagsToReturn;

@@ -61,9 +61,10 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Audio metadata
 
-- Track title, track number, and track artist are read from each file's embedded metadata tags (ID3, FLAC, M4A, etc.)
-- If a file has no metadata, track title falls back to filename parsing and track number falls back to alphabetical file order
-- Album title and album artist are read from the first track's metadata
+- A track's title and track number initially come from its filename (see Library scanning) — its embedded metadata tags are not read until the track is first played
+- The first time a track is played, its embedded metadata tags (ID3, FLAC, M4A, etc.) are read and replace the filename-derived title, track number, and artist in the database; if a tag is empty, the filename-derived value is kept
+- A track whose metadata has already been read is not re-read on later plays
+- Album title and album artist are read from the first track's metadata during the initial scan (see Library scanning), not from any other track
 - When both album artist and album title are present, the release name is displayed as "{albumArtist} - {albumTitle}"
 - When metadata is absent, the release name falls back to the folder name
 - Track artist is shown alongside the track title in the release screen track list
@@ -73,24 +74,31 @@ writing a feature; remove or update it when behaviour changes.
 
 - A release has a folder path, a name, a list of tracks, a list of tags, an optional art path, an optional album title, and an optional album artist
 - Copying a release with new tags preserves all other fields
-- A track has a file path, a title, a track number, an optional duration, and an optional artist
+- A track has a file path, a title, a track number, an optional duration, an optional artist, and whether its metadata has been read from the file yet
 
 ## Playback
 
-- Before playback starts, each track in the release is checked for local availability; missing tracks (e.g. an undownloaded/evicted iCloud file) are silently skipped rather than being handed to the player — availability is already shown visually in the release screen, so no message is shown per skipped track
-- If no track in the release is available, a message is shown and playback stops cleanly without looping or crashing
-- The full playback queue is the release's available tracks in track order, regardless of which track playback started on — skip previous/next moves through the release's track order, not through play history, so skipping back from a track works even if the earlier track was never played this session
-- If a track that exists on disk still fails to play (e.g. a corrupt file), a message is shown and playback automatically advances to the next track, up to a bounded number of consecutive failures before pausing
-- Manually skipping to the next or previous track shows the same unplayable message and cascades to the next track in that direction if it also can't be played
-- A cancelled/superseded playback request (e.g. tapping a second track before the first finishes loading) does not show an error message
-- Reaching the end of the release's last available track stops playback and closes the mini player, rather than leaving it showing the last track as playing
+- Tracks are loaded and played one at a time, in release track order, regardless of local availability at the moment playback starts — the full track list is the queue, not just the currently-available subset
+- Before loading a track, its local availability is checked; if it is not locally available, an iCloud download is requested for it and playback pauses (showing a buffering/waiting state) until it becomes available, then playback starts automatically without further user action
+- Requesting to play any track (Play All, tapping a specific track, or skipping to the next/previous track) also requests an iCloud download of the whole release, not just the requested track — this happens on every such request, even if the requested track is already locally available, so the rest of the release keeps downloading in the background
+- The mini player (and the Now Playing screen, if open) appears as soon as a track is requested, not only once it is actually loaded into the player — tapping a track that needs to download gives immediate visual feedback rather than appearing to do nothing until the download finishes
+- While the player is waiting for a track to download, the mini player's and Now Playing screen's play/pause control is replaced by a spinner; previous/next controls remain available
+- While the player is waiting for a track to download, the corresponding row in the release screen shows a spinner in place of its track number
+- The first time a track is confirmed locally available, its embedded metadata is read and persisted to the database (see Audio metadata) before it starts playing, so the title shown from the very start of playback is the corrected one, not the filename-derived guess
+- If a requested download does not complete within a timeout, a message is shown and playback automatically advances to the next track, as if the track had failed to play
+- If a track that exists on disk still fails to play (e.g. a corrupt file), a message is shown and playback automatically advances to the next track
+- A cancelled/superseded playback request (e.g. tapping a second track, or skipping, before the previous one finishes loading or downloading) does not show an error message and does not leave a stale buffering spinner showing
+- Skip previous/next moves through the release's track order, not through play history, so skipping back from a track works even if the earlier track was never played this session
+- If no track in the release is available and none can be downloaded, a message is shown and playback stops cleanly without looping or crashing
+- Reaching the end of the release's last track stops playback and closes the mini player, rather than leaving it showing the last track as playing
 - If playback stops because no further track could be played, the mini player closes the same way
 
 ## Mini player
 
-- Visible at the bottom of every screen whenever something is playing
+- Visible at the bottom of every screen whenever something is playing or has been requested (even while still waiting for its first track to download)
 - Shows current track title, album, and art thumbnail
-- Provides play/pause and skip controls
+- Shows the filename-derived track title until the track's real metadata has been read (see Audio metadata)
+- Provides play/pause and skip controls; the play/pause control becomes a spinner while waiting for the current track to download
 - Tapping it opens the Now Playing screen
 - Sized for easy tapping: larger art thumbnail, text, and control icons than a standard compact bar, with generous padding
 
@@ -98,8 +106,9 @@ writing a feature; remove or update it when behaviour changes.
 
 - Opens full-screen from the mini player
 - Shows full-size album art, release name, track title, and artist
+- Shows the filename-derived track title until the track's real metadata has been read (see Audio metadata)
 - Progress bar showing current position, scrubbable to seek
-- Play/pause, previous, and next controls
+- Play/pause, previous, and next controls; the play/pause control becomes a spinner while waiting for the current track to download
 - Dismissed by tapping the close button or swiping down
 - Automatically closes itself if playback stops (e.g. the queue finishes or runs out of playable tracks) while it's open
 
@@ -118,8 +127,12 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Release screen
 
+- Shows the release's current data from the database and updates itself automatically as that data changes (e.g. a background sync finishing its scan, or a track's metadata being read on first play) — it does not need to be reopened to reflect changes
+- If the release is removed from the library while this screen is open (e.g. its folder disappears in a sync), the screen closes itself automatically
+- If the release has no known tracks yet, the track list and "Play all" button are hidden and a message is shown instead; both appear as soon as tracks are known
 - Each track's local availability (e.g. downloaded from iCloud or not) is checked when the screen opens
-- An unavailable track is shown greyed out and cannot be tapped to play
+- A track's leading icon shows, in priority order: a spinner if it's the currently-playing track and its download is still in progress, an equalizer icon if it's the currently-playing track, a cloud icon if it's known but not locally available, or its track number if it's locally available
+- All tracks are tappable regardless of local availability — tapping one that isn't downloaded triggers the same download-then-play behaviour described under Playback
 
 ## Release card
 

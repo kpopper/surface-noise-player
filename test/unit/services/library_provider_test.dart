@@ -360,6 +360,94 @@ void main() {
     });
   });
 
+  group('updateTrackMetadata', () {
+    test('persists via the service and updates the in-memory track', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        Release(
+          folderPath: '/music/Album',
+          name: 'Album',
+          tracks: const [
+            Track(path: '/music/Album/01.mp3', title: 'Old', trackNumber: 1),
+          ],
+          tags: const [],
+        ),
+      ];
+      await provider.init();
+
+      await provider.updateTrackMetadata(
+        '/music/Album',
+        const Track(
+            path: '/music/Album/01.mp3',
+            title: 'New',
+            trackNumber: 1,
+            artist: 'Bob',
+            metadataRead: true),
+      );
+
+      expect(fakeService.lastUpdatedTrackPath, '/music/Album/01.mp3');
+      expect(fakeService.lastUpdatedTrackTitle, 'New');
+      expect(fakeService.lastUpdatedTrackArtist, 'Bob');
+      final track = provider.allReleases.first.tracks.first;
+      expect(track.title, 'New');
+      expect(track.artist, 'Bob');
+      expect(track.metadataRead, isTrue);
+    });
+
+    test('notifies listeners', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        Release(
+          folderPath: '/music/Album',
+          name: 'Album',
+          tracks: const [
+            Track(path: '/music/Album/01.mp3', title: 'Old', trackNumber: 1),
+          ],
+          tags: const [],
+        ),
+      ];
+      await provider.init();
+
+      int notifyCount = 0;
+      provider.addListener(() => notifyCount++);
+      await provider.updateTrackMetadata(
+        '/music/Album',
+        const Track(path: '/music/Album/01.mp3', title: 'New', trackNumber: 1),
+      );
+      expect(notifyCount, 1);
+    });
+
+    test('is a no-op when the release is not currently loaded', () async {
+      await provider.updateTrackMetadata(
+        '/music/Unknown',
+        const Track(
+            path: '/music/Unknown/01.mp3', title: 'New', trackNumber: 1),
+      );
+      // No throw, and the service call still happens (persistence is
+      // independent of whether the in-memory copy is currently loaded).
+      expect(fakeService.lastUpdatedTrackPath, '/music/Unknown/01.mp3');
+    });
+
+    test('is a no-op when the track is not part of the release', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        Release(
+            folderPath: '/music/Album',
+            name: 'Album',
+            tracks: const [],
+            tags: const []),
+      ];
+      await provider.init();
+
+      await provider.updateTrackMetadata(
+        '/music/Album',
+        const Track(
+            path: '/music/Album/missing.mp3', title: 'New', trackNumber: 1),
+      );
+      expect(provider.allReleases.first.tracks, isEmpty);
+    });
+  });
+
   group('loading state', () {
     test('is true during load and false after', () async {
       fakeService.rootToReturn = '/music';

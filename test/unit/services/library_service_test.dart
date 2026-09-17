@@ -447,6 +447,22 @@ void main() {
       expect(releases.first.tracks.map((t) => t.trackNumber).toList(), [1, 2]);
     });
 
+    test('populates metadataRead from the metadata_read column', () async {
+      await dbService.saveRelease('/music/a', 'Album A');
+      await dbService.saveTracks('/music/a', [
+        const Track(path: '/music/a/01.mp3', title: 'Unread', trackNumber: 1),
+        const Track(path: '/music/a/02.mp3', title: 'Read', trackNumber: 2),
+      ]);
+      await dbService.markTrackMetadataRead('/music/a/02.mp3',
+          title: 'Read', trackNumber: 2);
+
+      final tracks = (await service.loadLibrary()).first.tracks;
+      expect(tracks.firstWhere((t) => t.path == '/music/a/01.mp3').metadataRead,
+          isFalse);
+      expect(tracks.firstWhere((t) => t.path == '/music/a/02.mp3').metadataRead,
+          isTrue);
+    });
+
     test('loads tags for each release', () async {
       await dbService.saveRelease('/music/a', 'Album A');
       await dbService.saveTracks('/music/a', []);

@@ -4,6 +4,8 @@ class Track {
   final int trackNumber;
   final Duration? duration;
   final String? artist;
+  // Has real (file-tag) metadata replaced the filename-derived guess yet?
+  final bool metadataRead;
 
   const Track({
     required this.path,
@@ -11,6 +13,7 @@ class Track {
     required this.trackNumber,
     this.duration,
     this.artist,
+    this.metadataRead = false,
   });
 }
 

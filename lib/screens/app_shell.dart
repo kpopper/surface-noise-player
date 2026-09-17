@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
+import '../models/release.dart';
 import '../services/abstract_player_service.dart';
 import '../services/library_provider.dart';
 import '../services/player_service.dart';
@@ -22,6 +23,7 @@ class _AppShellState extends State<AppShell> {
   late AbstractPlayerService _svc;
   StreamSubscription<SequenceState?>? _sequenceSub;
   StreamSubscription<String>? _errorMessageSub;
+  StreamSubscription<({String folderPath, Track track})>? _metadataUpdatedSub;
   String? _lastRecordedReleasePath;
 
   @override
@@ -41,12 +43,19 @@ class _AppShellState extends State<AppShell> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
     });
+    _metadataUpdatedSub = _svc.trackMetadataUpdatedStream.listen((event) {
+      if (!mounted) return;
+      context
+          .read<LibraryProvider>()
+          .updateTrackMetadata(event.folderPath, event.track);
+    });
   }
 
   @override
   void dispose() {
     _sequenceSub?.cancel();
     _errorMessageSub?.cancel();
+    _metadataUpdatedSub?.cancel();
     super.dispose();
   }
 
@@ -60,19 +69,34 @@ class _AppShellState extends State<AppShell> {
           builder: (_) => const LibraryScreen(),
         ),
       ),
+      // Both stream builders are kept unconditionally in the tree (neither
+      // short-circuits to a hidden widget on its own) so each stays mounted
+      // and subscribed regardless of which stream fires first — otherwise an
+      // early "nothing to show" return from the outer builder would prevent
+      // the inner one from ever mounting to catch a later event, and the
+      // mini player (with its spinner) would never appear during a download
+      // wait, since that only shows up on waitingForDownloadStream, not
+      // sequenceStateStream.
       bottomNavigationBar: StreamBuilder<SequenceState?>(
         stream: svc.sequenceStateStream,
         builder: (context, snap) {
-          if (snap.data?.currentSource?.tag == null) {
-            return const SizedBox.shrink();
-          }
-          return MiniPlayer(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                fullscreenDialog: true,
-                builder: (_) => const NowPlayingScreen(),
-              ),
-            ),
+          return StreamBuilder<bool>(
+            stream: svc.waitingForDownloadStream,
+            initialData: svc.isWaitingForDownload,
+            builder: (context, waitingSnap) {
+              if (snap.data?.currentSource?.tag == null &&
+                  svc.currentTrack == null) {
+                return const SizedBox.shrink();
+              }
+              return MiniPlayer(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    fullscreenDialog: true,
+                    builder: (_) => const NowPlayingScreen(),
+                  ),
+                ),
+              );
+            },
           );
         },
       ),

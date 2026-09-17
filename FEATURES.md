@@ -4,7 +4,7 @@
 
 - [ ] ZIP import — auto-scan iCloud Drive Downloads for ZIPs containing audio files; extract into library with ID3-derived `Artist - Album` folder names; archive source ZIP to `_zips/`; auto-select the new release
 - [ ] Add swipe gestures to navigate from mini player to Now playing and to minimise Now Playing window
-- [ ] Library redesign (Phase 1: data layer) — replace the select/deselect model with directory scan/sync: the library is everything on disk, releases are added/removed automatically to match the folder, only a release's first track is downloaded (then evicted) to extract album info, and the management screen is removed. Part of a larger redesign (library screen, release screen, mini player, full-screen player, and per-track download-on-play, all still to come) that also folds in the proven approach from `spike/per-track-download-playback`
+- [ ] Library redesign — replacing the select/deselect model with "the library is everything on disk". Done so far: directory scan/sync data layer (releases added/removed automatically, first-track-only scan for album info, management screen removed), and per-track download-on-play (request-on-tap, buffering spinner replacing the play/pause button, whole-release download requested on every play action, metadata read and persisted the first time a track is confirmed available, release screen now live from the database). Still to come: the main library screen itself — artist/album filter, live-reactive cards, all releases tappable regardless of download status (the `isAvailable`-based greying-out is now dead code, not yet removed)
 
 ## Completed
 

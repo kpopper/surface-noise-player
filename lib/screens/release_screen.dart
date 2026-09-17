@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
@@ -26,31 +27,54 @@ class ReleaseScreen extends StatefulWidget {
 }
 
 class _ReleaseScreenState extends State<ReleaseScreen> {
-  late Release _release;
   late AbstractPlayerService _playerSvc;
   late BookmarkService _bookmarks;
   final _tagController = TextEditingController();
   Set<String> _unavailablePaths = {};
+  List<String> _lastCheckedTrackPaths = [];
+  bool _closing = false;
 
   @override
   void initState() {
     super.initState();
-    _release = widget.release;
     _playerSvc = widget.playerService ?? PlayerService.instance;
     _bookmarks = widget.bookmarkService ?? BookmarkService.instance;
-    _loadAvailability();
   }
 
-  Future<void> _loadAvailability() async {
+  // Re-checks availability whenever the live track list actually changes
+  // (a new track appears, one goes away) rather than on every rebuild.
+  void _maybeReloadAvailability(Release release) {
+    final currentPaths = release.tracks.map((t) => t.path).toList();
+    if (listEquals(currentPaths, _lastCheckedTrackPaths)) return;
+    _lastCheckedTrackPaths = currentPaths;
+    _loadAvailability(release);
+  }
+
+  Future<void> _loadAvailability(Release release) async {
     final results = await Future.wait(
-      _release.tracks.map((t) => _bookmarks.isFileAvailable(t.path)),
+      release.tracks.map((t) => _bookmarks.isFileAvailable(t.path)),
     );
     if (!mounted) return;
     setState(() {
       _unavailablePaths = {
-        for (var i = 0; i < _release.tracks.length; i++)
-          if (!results[i]) _release.tracks[i].path,
+        for (var i = 0; i < release.tracks.length; i++)
+          if (!results[i]) release.tracks[i].path,
       };
+    });
+  }
+
+  // The release is no longer in the library (its folder disappeared in a
+  // sync) — close this screen rather than leave a dead-end view open.
+  // Guarded so a rebuild while still closing doesn't schedule a second pop.
+  void _scheduleClose() {
+    if (_closing) return;
+    _closing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.isCurrent) {
+        Navigator.of(context).pop();
+      }
     });
   }
 
@@ -60,26 +84,19 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
     super.dispose();
   }
 
-  Future<void> _addTag(String tag) async {
+  Future<void> _addTag(Release release, String tag) async {
     if (tag.trim().isEmpty) return;
-    final lib = context.read<LibraryProvider>();
-    await lib.addTagToRelease(_release, tag.trim().toLowerCase());
-    // Refresh local state from provider
-    final updated =
-        lib.allReleases.firstWhere((r) => r.folderPath == _release.folderPath);
-    setState(() => _release = updated);
+    await context
+        .read<LibraryProvider>()
+        .addTagToRelease(release, tag.trim().toLowerCase());
     _tagController.clear();
   }
 
-  Future<void> _removeTag(String tag) async {
-    final lib = context.read<LibraryProvider>();
-    await lib.removeTagFromRelease(_release, tag);
-    final updated =
-        lib.allReleases.firstWhere((r) => r.folderPath == _release.folderPath);
-    setState(() => _release = updated);
+  Future<void> _removeTag(Release release, String tag) async {
+    await context.read<LibraryProvider>().removeTagFromRelease(release, tag);
   }
 
-  void _showAddTagDialog() {
+  void _showAddTagDialog(Release release) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -97,7 +114,7 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
               future: context.read<LibraryProvider>().allTags(),
               builder: (context, snap) {
                 final existing = (snap.data ?? [])
-                    .where((t) => !_release.tags.contains(t))
+                    .where((t) => !release.tags.contains(t))
                     .toList();
                 if (existing.isNotEmpty) {
                   return Wrap(
@@ -107,7 +124,7 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                               label: Text(t),
                               onPressed: () {
                                 Navigator.pop(ctx);
-                                _addTag(t);
+                                _addTag(release, t);
                               },
                             ))
                         .toList(),
@@ -127,13 +144,13 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                   icon: const Icon(Icons.add),
                   onPressed: () {
                     Navigator.pop(ctx);
-                    _addTag(_tagController.text);
+                    _addTag(release, _tagController.text);
                   },
                 ),
               ),
               onSubmitted: (v) {
                 Navigator.pop(ctx);
-                _addTag(v);
+                _addTag(release, v);
               },
               textCapitalization: TextCapitalization.none,
             ),
@@ -145,109 +162,152 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final lib = context.watch<LibraryProvider>();
+    final matches =
+        lib.allReleases.where((r) => r.folderPath == widget.release.folderPath);
+    final release = matches.isEmpty ? null : matches.first;
+
+    if (release == null) {
+      _scheduleClose();
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.release.name)),
+        body: const SizedBox.shrink(),
+      );
+    }
+
+    _maybeReloadAvailability(release);
+
     return Scaffold(
-      appBar: AppBar(title: Text(_release.name)),
+      appBar: AppBar(title: Text(release.name)),
       body: Column(
         children: [
           Expanded(
             child: StreamBuilder<SequenceState?>(
               stream: _playerSvc.sequenceStateStream,
               builder: (context, snap) {
-                final currentPath = snap.data?.currentSource?.tag is MediaItem
-                    ? (snap.data!.currentSource!.tag as MediaItem).id
-                    : null;
-                final isThisRelease = _playerSvc.currentRelease?.folderPath ==
-                    _release.folderPath;
+                // currentTrack is set as soon as a track is requested, even
+                // before it's downloaded and handed to just_audio — fall
+                // back to it (refreshed via waitingForDownloadStream below)
+                // so the row highlights immediately on tap, not only once
+                // the track actually starts playing.
+                final tag = snap.data?.currentSource?.tag as MediaItem?;
+                final isThisRelease =
+                    _playerSvc.currentRelease?.folderPath == release.folderPath;
 
-                return ListView(
-                  children: [
-                    if (_release.artPath != null)
-                      Image.file(
-                        File(_release.artPath!),
-                        width: double.infinity,
-                        fit: BoxFit.fitWidth,
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 4,
-                              children: [
-                                ..._release.tags.map((t) => TagChip(
-                                      label: t,
-                                      onDeleted: () => _removeTag(t),
-                                    )),
-                                ActionChip(
-                                  avatar: const Icon(Icons.add, size: 16),
-                                  label: const Text('Add tag'),
-                                  onPressed: _showAddTagDialog,
-                                ),
-                              ],
-                            ),
+                return StreamBuilder<bool>(
+                  stream: _playerSvc.waitingForDownloadStream,
+                  initialData: _playerSvc.isWaitingForDownload,
+                  builder: (context, waitingSnap) {
+                    final currentPath = tag?.id ??
+                        (isThisRelease ? _playerSvc.currentTrack?.path : null);
+                    final isWaiting = waitingSnap.data ?? false;
+
+                    if (release.tracks.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          'No tracks found yet',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      );
+                    }
+
+                    return ListView(
+                      children: [
+                        if (release.artPath != null)
+                          Image.file(
+                            File(release.artPath!),
+                            width: double.infinity,
+                            fit: BoxFit.fitWidth,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink(),
                           ),
-                        ],
-                      ),
-                    ),
-                    const Divider(),
-                    ...List.generate(_release.tracks.length, (i) {
-                      final track = _release.tracks[i];
-                      final isPlaying =
-                          isThisRelease && currentPath == track.path;
-                      final isUnavailable =
-                          _unavailablePaths.contains(track.path);
-                      final dimColor = Colors.grey[400];
-                      return ListTile(
-                        enabled: !isUnavailable,
-                        leading: isPlaying
-                            ? const Icon(Icons.equalizer,
-                                color: Colors.deepOrange)
-                            : Text(
-                                '${track.trackNumber}',
-                                style: TextStyle(
-                                    color:
-                                        isUnavailable ? dimColor : Colors.grey),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: [
+                                    ...release.tags.map((t) => TagChip(
+                                          label: t,
+                                          onDeleted: () =>
+                                              _removeTag(release, t),
+                                        )),
+                                    ActionChip(
+                                      avatar: const Icon(Icons.add, size: 16),
+                                      label: const Text('Add tag'),
+                                      onPressed: () =>
+                                          _showAddTagDialog(release),
+                                    ),
+                                  ],
+                                ),
                               ),
-                        title: Text(
-                          track.title,
-                          style: TextStyle(
-                            fontWeight:
-                                isPlaying ? FontWeight.bold : FontWeight.normal,
-                            color: isUnavailable
-                                ? dimColor
-                                : (isPlaying ? Colors.deepOrange : null),
+                            ],
                           ),
                         ),
-                        subtitle: track.artist != null
-                            ? Text(track.artist!,
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: isUnavailable ? dimColor : null))
-                            : null,
-                        onTap: isUnavailable
-                            ? null
-                            : () => _playerSvc.playTrack(_release, i),
-                      );
-                    }),
-                  ],
+                        const Divider(),
+                        ...List.generate(release.tracks.length, (i) {
+                          final track = release.tracks[i];
+                          final isPlaying =
+                              isThisRelease && currentPath == track.path;
+                          // Not yet downloaded locally — still tappable; playing it
+                          // triggers a download and waits for it (see PlayerService).
+                          final isUnavailable =
+                              _unavailablePaths.contains(track.path);
+                          return ListTile(
+                            leading: isPlaying && isWaiting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : isPlaying
+                                    ? const Icon(Icons.equalizer,
+                                        color: Colors.deepOrange)
+                                    : isUnavailable
+                                        ? Icon(Icons.cloud_download_outlined,
+                                            color: Colors.grey[500], size: 20)
+                                        : Text('${track.trackNumber}',
+                                            style: const TextStyle(
+                                                color: Colors.grey)),
+                            title: Text(
+                              track.title,
+                              style: TextStyle(
+                                fontWeight: isPlaying
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isPlaying ? Colors.deepOrange : null,
+                              ),
+                            ),
+                            subtitle: track.artist != null
+                                ? Text(track.artist!,
+                                    style: const TextStyle(fontSize: 12))
+                                : null,
+                            onTap: () => _playerSvc.playTrack(release, i),
+                          );
+                        }),
+                      ],
+                    );
+                  },
                 );
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: FilledButton.icon(
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Play all'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 48),
+          if (release.tracks.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: FilledButton.icon(
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Play all'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                ),
+                onPressed: () => _playerSvc.playRelease(release),
               ),
-              onPressed: () => _playerSvc.playRelease(_release),
             ),
-          ),
         ],
       ),
     );
