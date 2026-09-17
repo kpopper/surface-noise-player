@@ -312,10 +312,13 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                                 color: isPlaying ? Colors.deepOrange : null,
                               ),
                             ),
-                            subtitle: track.artist != null
-                                ? Text(track.artist!,
-                                    style: const TextStyle(fontSize: 12))
-                                : null,
+                            // Always render a subtitle line, even when
+                            // there's no artist yet — otherwise the row's
+                            // height changes (and the whole list jumps)
+                            // right when a track's real metadata arrives
+                            // and it suddenly gains one.
+                            subtitle: Text(track.artist ?? '',
+                                style: const TextStyle(fontSize: 12)),
                             onTap: () => _playerSvc.playTrack(release, i),
                           );
                         }),

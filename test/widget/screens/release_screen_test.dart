@@ -118,6 +118,47 @@ void main() {
       expect(find.byIcon(Icons.cloud_download_outlined), findsNothing);
       expect(find.text('1'), findsOneWidget);
     });
+
+    testWidgets(
+        'reserves subtitle space so row height is the same with or without an artist',
+        (tester) async {
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [
+          Track(path: '/music/Test/01.mp3', title: 'No Artist', trackNumber: 1),
+          Track(
+              path: '/music/Test/02.mp3',
+              title: 'Has Artist',
+              trackNumber: 2,
+              artist: 'Someone'),
+        ],
+        tags: const [],
+      );
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(home: ReleaseScreen(release: release)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final heightWithoutArtist = tester
+          .getSize(find.ancestor(
+              of: find.text('No Artist'), matching: find.byType(ListTile)))
+          .height;
+      final heightWithArtist = tester
+          .getSize(find.ancestor(
+              of: find.text('Has Artist'), matching: find.byType(ListTile)))
+          .height;
+
+      expect(heightWithoutArtist, heightWithArtist);
+    });
   });
 
   group('live updates', () {

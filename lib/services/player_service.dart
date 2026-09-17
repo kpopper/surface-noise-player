@@ -16,6 +16,11 @@ class PlayerService implements AbstractPlayerService {
   static const _downloadPollInterval = Duration(seconds: 1);
   static const _downloadTimeout = Duration(minutes: 10);
 
+  // How often to check the rest of the release for tracks that have
+  // finished downloading in the background and still need their metadata
+  // read, while something in the queue is still unread.
+  static const _backgroundMetadataPollInterval = Duration(seconds: 3);
+
   final AudioPlayer player = AudioPlayer();
   final BookmarkService _bookmarks;
   final MetadataService _metadata;
@@ -38,6 +43,12 @@ class PlayerService implements AbstractPlayerService {
   int _loadRequestId = 0;
 
   bool _waiting = false;
+
+  // Watches the rest of the current release for tracks that finish
+  // downloading in the background (the whole-folder request fired in
+  // _playAtIndex) and reads their metadata too, not just the one actually
+  // playing. Cancels itself once every track in the queue has been read.
+  Timer? _backgroundMetadataTimer;
 
   // Set while _playAtIndex's own setAudioSource/play call is in flight, so
   // the errorStream/processingState listeners below don't also react to a
@@ -106,6 +117,7 @@ class PlayerService implements AbstractPlayerService {
     }
     currentRelease = release;
     _queue = release.tracks;
+    _startBackgroundMetadataWatch();
     await _playAtIndex(trackIndex.clamp(0, _queue.length - 1));
   }
 
@@ -177,6 +189,10 @@ class PlayerService implements AbstractPlayerService {
   // guess. A track whose metadata was already read is returned unchanged.
   Future<Track> _ensureMetadataRead(Track track) async {
     if (track.metadataRead) return track;
+    return _readAndPersistMetadata(track);
+  }
+
+  Future<Track> _readAndPersistMetadata(Track track) async {
     final meta = await _metadata.readMetadata(track.path);
     final updated = Track(
       path: track.path,
@@ -188,6 +204,46 @@ class PlayerService implements AbstractPlayerService {
     _trackMetadataUpdatedController
         .add((folderPath: currentRelease!.folderPath, track: updated));
     return updated;
+  }
+
+  void _startBackgroundMetadataWatch() {
+    _backgroundMetadataTimer?.cancel();
+    _backgroundMetadataTimer = Timer.periodic(
+        _backgroundMetadataPollInterval, (_) => _scanForBackgroundMetadata());
+  }
+
+  void _stopBackgroundMetadataWatch() {
+    _backgroundMetadataTimer?.cancel();
+    _backgroundMetadataTimer = null;
+  }
+
+  // Checks every track in the current queue other than the one actually
+  // playing (which _playAtIndex already handles) for ones that have become
+  // available since the last check and still need their metadata read —
+  // lets the rest of the release correct itself from filename guesses as
+  // the whole-folder download progresses, not just the track being played.
+  Future<void> _scanForBackgroundMetadata() async {
+    final release = currentRelease;
+    if (release == null) {
+      _stopBackgroundMetadataWatch();
+      return;
+    }
+    var allRead = true;
+    for (var i = 0; i < _queue.length; i++) {
+      final track = _queue[i];
+      if (track.metadataRead) continue;
+      if (i == _currentIndex) {
+        allRead = false;
+        continue;
+      }
+      if (!await _bookmarks.isFileAvailable(track.path)) {
+        allRead = false;
+        continue;
+      }
+      if (currentRelease != release) return; // release changed mid-scan
+      _queue[i] = await _readAndPersistMetadata(track);
+    }
+    if (allRead && currentRelease == release) _stopBackgroundMetadataWatch();
   }
 
   Future<void> _advanceOrStop(int fromIndex) async {
@@ -255,6 +311,7 @@ class PlayerService implements AbstractPlayerService {
     _currentIndex = -1;
     ++_loadRequestId;
     _setWaiting(false);
+    _stopBackgroundMetadataWatch();
     await player.pause();
     await player.clearAudioSources();
   }
@@ -266,6 +323,7 @@ class PlayerService implements AbstractPlayerService {
   void dispose() {
     _errorStreamSub?.cancel();
     _processingStateSub?.cancel();
+    _backgroundMetadataTimer?.cancel();
     _errorMessageController.close();
     _waitingController.close();
     _trackMetadataUpdatedController.close();

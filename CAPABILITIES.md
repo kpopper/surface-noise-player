@@ -85,6 +85,7 @@ writing a feature; remove or update it when behaviour changes.
 - While the player is waiting for a track to download, the mini player's and Now Playing screen's play/pause control is replaced by a spinner; previous/next controls remain available
 - While the player is waiting for a track to download, the corresponding row in the release screen shows a spinner in place of its track number
 - The first time a track is confirmed locally available, its embedded metadata is read and persisted to the database (see Audio metadata) before it starts playing, so the title shown from the very start of playback is the corrected one, not the filename-derived guess
+- While a release plays, the rest of its tracks are also checked periodically for ones that have finished downloading in the background (from the whole-release request above) and still need their metadata read — this keeps correcting the rest of the album as it downloads, not only the track actually being played; it stops once every track's metadata has been read
 - If a requested download does not complete within a timeout, a message is shown and playback automatically advances to the next track, as if the track had failed to play
 - If a track that exists on disk still fails to play (e.g. a corrupt file), a message is shown and playback automatically advances to the next track
 - A cancelled/superseded playback request (e.g. tapping a second track, or skipping, before the previous one finishes loading or downloading) does not show an error message and does not leave a stale buffering spinner showing
@@ -134,6 +135,7 @@ writing a feature; remove or update it when behaviour changes.
 - While at least one track is not locally available, its availability is re-checked periodically (every 2 seconds) so a track that finishes downloading in the background — including one that isn't the currently-playing track — updates from a cloud icon to its track number without needing the screen to be reopened; this stops once every track is available
 - A track's leading icon shows, in priority order: a spinner if it's the currently-playing track and its download is still in progress, an equalizer icon if it's the currently-playing track, a cloud icon if it's known but not locally available, or its track number if it's locally available
 - All tracks are tappable regardless of local availability — tapping one that isn't downloaded triggers the same download-then-play behaviour described under Playback
+- Every track row reserves space for the artist line even when no artist is known yet, so a row's height doesn't change (and the list doesn't visibly shift) when its metadata is read and it gains one
 
 ## Release card
 
