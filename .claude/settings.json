@@ -14,7 +14,8 @@
       "Bash(flutter analyze *)",
       "Skill(loop)",
       "Skill(loop:*)",
-      "Bash(dart format *)"
+      "Bash(dart format *)",
+      "Bash(git log *)"
     ]
   },
   "hooks": {
