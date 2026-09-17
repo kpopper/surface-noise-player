@@ -45,12 +45,14 @@ class MiniPlayer extends StatelessWidget {
                       Text(item.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
                       if (item.album != null)
                         Text(item.album!,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.grey)),
                     ],
                   ),
                 ),

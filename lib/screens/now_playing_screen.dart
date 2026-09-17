@@ -78,7 +78,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 const SizedBox(height: 32),
                 Text(
                   item.title,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.bold),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
@@ -130,14 +131,18 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                               },
                             ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
                               child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(_format(position),
-                                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                      style: const TextStyle(
+                                          fontSize: 12, color: Colors.grey)),
                                   Text(_format(duration),
-                                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                      style: const TextStyle(
+                                          fontSize: 12, color: Colors.grey)),
                                 ],
                               ),
                             ),
@@ -160,7 +165,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         IconButton(
                           iconSize: 40,
                           icon: const Icon(Icons.skip_previous),
-                          onPressed: _svc.hasPrevious ? _svc.seekToPrevious : null,
+                          onPressed:
+                              _svc.hasPrevious ? _svc.seekToPrevious : null,
                         ),
                         const SizedBox(width: 16),
                         FilledButton(

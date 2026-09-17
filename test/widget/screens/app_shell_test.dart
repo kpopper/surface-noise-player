@@ -8,9 +8,11 @@ import '../../helpers/fake_library_service.dart';
 import '../../helpers/fake_player_service.dart';
 
 void main() {
-  testWidgets('shows a SnackBar when the player reports an error message', (tester) async {
+  testWidgets('shows a SnackBar when the player reports an error message',
+      (tester) async {
     final fakePlayer = FakePlayerService();
-    final provider = LibraryProvider(FakeLibraryService(), FakeBookmarkService());
+    final provider =
+        LibraryProvider(FakeLibraryService(), FakeBookmarkService());
 
     await tester.pumpWidget(
       ChangeNotifierProvider<LibraryProvider>.value(
@@ -20,10 +22,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    fakePlayer.emitErrorMessage("Couldn't play 'Track One' — check it's downloaded from iCloud.");
+    fakePlayer.emitErrorMessage(
+        "Couldn't play 'Track One' — check it's downloaded from iCloud.");
     await tester.pump();
     await tester.pump();
 
-    expect(find.text("Couldn't play 'Track One' — check it's downloaded from iCloud."), findsOneWidget);
+    expect(
+        find.text(
+            "Couldn't play 'Track One' — check it's downloaded from iCloud."),
+        findsOneWidget);
   });
 }

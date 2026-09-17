@@ -38,7 +38,8 @@ class _AppShellState extends State<AppShell> {
     });
     _errorMessageSub = _svc.errorMessageStream.listen((message) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     });
   }
 
@@ -62,7 +63,9 @@ class _AppShellState extends State<AppShell> {
       bottomNavigationBar: StreamBuilder<SequenceState?>(
         stream: svc.sequenceStateStream,
         builder: (context, snap) {
-          if (snap.data?.currentSource?.tag == null) return const SizedBox.shrink();
+          if (snap.data?.currentSource?.tag == null) {
+            return const SizedBox.shrink();
+          }
           return MiniPlayer(
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(

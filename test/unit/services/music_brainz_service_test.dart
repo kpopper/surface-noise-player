@@ -16,7 +16,9 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
-  test('falls back to release-group artwork when the earliest-dated edition has none', () async {
+  test(
+      'falls back to release-group artwork when the earliest-dated edition has none',
+      () async {
     // Mirrors "Millions Now Living Will Never Die" by Tortoise: the search
     // returns several editions of the same release group, the earliest-dated
     // one (chosen by the date tiebreak) has no scan in the Cover Art

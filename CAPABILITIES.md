@@ -8,33 +8,20 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Library scanning
 
-- Each direct subfolder of the selected root that contains at least one audio file is treated as a release
+- The library is every direct subfolder of the selected root that contains at least one audio file — there is no manual selection step
 - Files directly in the root (not in a subfolder) are ignored
 - A subfolder with no audio files is ignored
+- A subfolder whose name starts with `_` is ignored (reserved for internal use, e.g. archived ZIP imports)
 - Recognised audio formats: `.mp3` `.flac` `.aac` `.m4a` `.wav` `.ogg` `.opus` `.aiff` `.aif`
-- Non-audio files inside a release folder (e.g. cover art, text files) are ignored
-- Tracks within a release are ordered by track number
-- Track numbers are read from embedded metadata; if absent, tracks are numbered in alphabetical filename order starting from 1
-- Leading track-number prefixes are stripped from filenames to produce the track title (e.g. `01 - Song.mp3` → `Song`, `02. Another.flac` → `Another`)
 - A previously selected root folder is remembered across app restarts
-- On app launch, selected releases are loaded from the database without re-scanning the file system
-- On app launch, iCloud download is requested for all selected releases; if a download request fails, the release is marked unavailable
-- When a release folder is selected in the management screen, a full scan runs for that folder: metadata is extracted, artwork is resolved, and the result is persisted to the database
-- A newly selected folder is assigned an activity timestamp; a folder that was previously selected retains its existing timestamp
-
-## Library management
-
-- The library screen shows only selected releases, not all subfolders of the root
-- A management screen lists every direct subfolder of the root as a checkbox list, sorted alphabetically
-- The management screen has a search field that filters the folder list to names containing the search text (case-insensitive); clearing the search restores the full list
-- In the management screen, the search field loses focus (closing the keyboard) when the folder list below it is scrolled or tapped
-- In the management screen, a folder currently selected (in the library) is shown in bold; unselected folders are shown in normal weight, so selected albums stand out from new/unselected ones
-- Selecting a different folder resets the database
-- Selecting a folder scans it, persists the release to the database, triggers an iCloud download of its audio files, and immediately shows it in the library
-- Deselecting a folder removes it from the selected releases, evicts its audio files from iCloud storage, and removes it from the library
-- Tags and play history are preserved when a folder is deselected — they remain in the database keyed by folder path
-- Selected releases persist across app restarts
-- A release that fails its iCloud download request on app launch is shown in the library but cannot be opened
+- On app launch, and when the refresh button is tapped, the directory is synced with the database: a release is added for every subfolder not yet known, and a release is removed for every known release whose subfolder no longer exists on disk
+- Removing a release because its folder is gone preserves its tags and activity history in the database, keyed by folder path, in case the folder reappears
+- A release already known to the database and still present on disk is left untouched by a sync — its tracks, metadata, and artwork are not re-scanned
+- When a release is newly discovered, a track is added for every audio file in its folder, ordered by filename, with a title derived from the filename (leading track-number prefixes like `01 - ` or `02. ` are stripped); no other metadata is read yet
+- When a release is newly discovered, only its first track (by filename) is downloaded; its embedded album artist/album title metadata is read from it, and it is evicted again afterwards — the rest of the release's tracks are left untouched
+- If a release's first-track download times out, the release is still created (using filename-derived tracks and the folder name as a fallback), and is retried on a future sync rather than left permanently unresolved
+- Album artwork for a newly discovered release is resolved from a folder image file first (no download needed), then from the first track's embedded artwork once it has downloaded; a MusicBrainz lookup is not attempted during a scan
+- A newly discovered release is assigned an activity timestamp at discovery time, so it sorts to the top of the library until played
 
 ## Library sorting
 
@@ -66,8 +53,7 @@ writing a feature; remove or update it when behaviour changes.
 - Preferred filenames are checked in order: `cover.jpg`, `folder.jpg`, `artwork.jpg`, `front.jpg`
 - If none of those are present, the first image file found in the folder is used
 - If no image file is present, embedded artwork from the audio files is extracted and used
-- If neither a file nor embedded artwork is available, and the release has an album title and at least one of album artist or track artist in its metadata, cover art is fetched automatically from MusicBrainz Cover Art Archive; the earliest release date is preferred to identify the release group, and artwork is fetched at the release-group level so that any edition's scanned cover satisfies the lookup even if the earliest-dated edition itself has none; the image is saved as `cover.jpg` in the release folder
-- If both artist and album title metadata are absent, the MusicBrainz lookup is skipped
+- A MusicBrainz Cover Art Archive lookup (by album artist/title, preferring the earliest release date, fetched at the release-group level so any edition's scanned cover satisfies the lookup) exists as a fallback for when neither a local file nor embedded artwork is found, saving the result as `cover.jpg` in the release folder — currently not triggered by anything (library scanning explicitly skips it); an on-demand trigger from the release screen is planned but not yet implemented
 - If neither a file nor embedded artwork is available, `artPath` is null and a placeholder is shown
 - A release card shows a square thumbnail of the cover art (or placeholder) on the left
 - The release screen shows the cover art as a full-width header above the track list
@@ -119,13 +105,16 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Library screen
 
-- When no root folder has been selected, an empty-state "Set up Library" prompt is shown
-- When a root folder is selected but no albums are selected, a "No albums selected" message is shown with a button to open the management screen
+- When no root folder has been selected, an empty-state prompt is shown with a button to choose a library folder
+- When a root folder is selected but the library is empty (no valid subfolders found), an empty-state message is shown with a button to choose a different library folder
 - When releases exist, one card is shown per release
 - When an active tag filter has no matching releases, a "no releases match" message is shown
-- The app bar has a manage button that opens the library management screen
-- The app bar has a refresh button; tapping it re-scans every selected release folder on disk, updating tracks, metadata, and artwork; activity timestamps are not changed
-- A release marked unavailable is shown in the list but cannot be tapped to open
+- The app bar has a button to choose a different library folder; it is disabled while a sync is in progress
+- The app bar has a refresh button; tapping it re-syncs the directory with the database (see Library scanning); activity timestamps are not changed by a refresh
+- While a sync is in progress (on launch or from the refresh button), the refresh button is replaced by a spinner in its place
+- Already-known releases stay visible and tappable while a sync runs in the background, both on launch and from the refresh button — the list is not replaced by a full-screen spinner unless there are no releases to show yet
+- As a sync discovers, removes, or resolves a release, the change appears in the list as soon as it happens, rather than only once the whole sync finishes
+- Picking a different library folder does show a full-screen spinner until its first sync completes, since there is nothing from the previous folder worth showing
 
 ## Release screen
 

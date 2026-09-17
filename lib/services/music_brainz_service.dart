@@ -5,10 +5,12 @@ import 'package:http/http.dart' as http;
 
 abstract class MusicBrainzService {
   static MusicBrainzService? _instance;
-  static MusicBrainzService get instance => _instance ??= _MusicBrainzServiceImpl();
+  static MusicBrainzService get instance =>
+      _instance ??= _MusicBrainzServiceImpl();
 
   @visibleForTesting
-  factory MusicBrainzService.forTest(http.Client client) => _MusicBrainzServiceImpl(client);
+  factory MusicBrainzService.forTest(http.Client client) =>
+      _MusicBrainzServiceImpl(client);
 
   Future<String?> fetchArtwork({
     required String? albumArtist,
@@ -23,7 +25,8 @@ class _MusicBrainzServiceImpl implements MusicBrainzService {
 
   final http.Client _client;
 
-  _MusicBrainzServiceImpl([http.Client? client]) : _client = client ?? http.Client();
+  _MusicBrainzServiceImpl([http.Client? client])
+      : _client = client ?? http.Client();
 
   @override
   Future<String?> fetchArtwork({
@@ -48,7 +51,8 @@ class _MusicBrainzServiceImpl implements MusicBrainzService {
       'fmt': 'json',
       'limit': '5',
     });
-    final response = await _client.get(uri, headers: {'User-Agent': _userAgent});
+    final response =
+        await _client.get(uri, headers: {'User-Agent': _userAgent});
     if (response.statusCode != 200) return null;
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -65,12 +69,16 @@ class _MusicBrainzServiceImpl implements MusicBrainzService {
       ..sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
 
     final candidate = withDates.isNotEmpty ? withDates.first : releases.first;
-    return (candidate['release-group'] as Map<String, dynamic>?)?['id'] as String?;
+    return (candidate['release-group'] as Map<String, dynamic>?)?['id']
+        as String?;
   }
 
-  Future<String?> _downloadArtwork(String releaseGroupId, String folderPath) async {
-    final uri = Uri.https('coverartarchive.org', '/release-group/$releaseGroupId/front-1200');
-    final response = await _client.get(uri, headers: {'User-Agent': _userAgent});
+  Future<String?> _downloadArtwork(
+      String releaseGroupId, String folderPath) async {
+    final uri = Uri.https(
+        'coverartarchive.org', '/release-group/$releaseGroupId/front-1200');
+    final response =
+        await _client.get(uri, headers: {'User-Agent': _userAgent});
     if (response.statusCode != 200) return null;
 
     final file = File('$folderPath/cover.jpg');

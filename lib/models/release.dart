@@ -37,7 +37,9 @@ class Release {
     this.isAvailable = true,
   });
 
-  Release copyWith({List<String>? tags, DateTime? lastActivityAt, bool? isAvailable}) => Release(
+  Release copyWith(
+          {List<String>? tags, DateTime? lastActivityAt, bool? isAvailable}) =>
+      Release(
         folderPath: folderPath,
         name: name,
         tracks: tracks,

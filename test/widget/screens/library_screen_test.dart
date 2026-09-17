@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -42,20 +44,21 @@ void main() {
     testWidgets('shows empty state prompt', (tester) async {
       await pumpLibraryScreen(tester, savedRoot: null);
       expect(find.text('No library set up'), findsOneWidget);
-      expect(find.text('Set up Library'), findsOneWidget);
+      expect(find.text('Choose Library Folder'), findsOneWidget);
     });
 
-    testWidgets('shows manage icon button in app bar', (tester) async {
+    testWidgets('shows choose-folder icon button in app bar', (tester) async {
       await pumpLibraryScreen(tester, savedRoot: null);
-      expect(find.byIcon(Icons.library_add), findsWidgets);
+      expect(find.byIcon(Icons.folder_open), findsWidgets);
     });
   });
 
-  group('folder selected — no albums selected', () {
-    testWidgets('shows "No albums selected" when no releases chosen', (tester) async {
+  group('folder selected — no releases found', () {
+    testWidgets('shows "No releases found" when the library is empty',
+        (tester) async {
       await pumpLibraryScreen(tester, savedRoot: '/music', releases: []);
-      expect(find.textContaining('No albums selected'), findsOneWidget);
-      expect(find.text('Manage Library'), findsOneWidget);
+      expect(find.textContaining('No releases found'), findsOneWidget);
+      expect(find.text('Choose a Different Folder'), findsOneWidget);
     });
   });
 
@@ -72,19 +75,24 @@ void main() {
     });
 
     testWidgets('shows app bar title', (tester) async {
-      await pumpLibraryScreen(tester, savedRoot: '/music', releases: [makeRelease('X')]);
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: [makeRelease('X')]);
       expect(find.text('Surface Noise'), findsOneWidget);
     });
 
     testWidgets('refresh button is present', (tester) async {
-      await pumpLibraryScreen(tester, savedRoot: '/music', releases: [makeRelease('X')]);
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: [makeRelease('X')]);
       expect(find.byIcon(Icons.refresh), findsOneWidget);
     });
 
-    testWidgets('unavailable release is shown but non-interactive', (tester) async {
+    testWidgets('unavailable release is shown but non-interactive',
+        (tester) async {
       final fake = FakeLibraryService()
         ..rootToReturn = '/music'
-        ..releasesToReturn = [makeRelease('Unavailable Album', isAvailable: false)];
+        ..releasesToReturn = [
+          makeRelease('Unavailable Album', isAvailable: false)
+        ];
       final fakeBookmarks = FakeBookmarkService()..downloadResult = false;
       final provider = LibraryProvider(fake, fakeBookmarks);
       await tester.pumpWidget(wrapWithProvider(provider));
@@ -93,12 +101,70 @@ void main() {
       expect(find.text('Unavailable Album'), findsOneWidget);
       await tester.tap(find.text('Unavailable Album'));
       await tester.pumpAndSettle();
-      expect(find.text('Surface Noise'), findsOneWidget); // still on library screen
+      expect(find.text('Surface Noise'),
+          findsOneWidget); // still on library screen
+    });
+  });
+
+  group('sync spinner', () {
+    testWidgets(
+        'refresh icon is replaced by a spinner while a sync is in progress',
+        (tester) async {
+      final fake = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [makeRelease('X')];
+      final provider = LibraryProvider(fake, FakeBookmarkService());
+      await tester.pumpWidget(wrapWithProvider(provider));
+      await tester.pumpAndSettle(); // initial sync completes
+
+      expect(find.byIcon(Icons.refresh), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      fake.syncGate = Completer<void>();
+      final refreshFuture = provider.refresh();
+      await tester.pump(); // let loading flip true and rebuild
+
+      expect(find.byIcon(Icons.refresh), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+
+      fake.syncGate!.complete();
+      await refreshFuture;
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.refresh), findsOneWidget);
+    });
+
+    testWidgets(
+        'the choose-folder button is disabled while a sync is in progress',
+        (tester) async {
+      final fake = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [makeRelease('X')];
+      final provider = LibraryProvider(fake, FakeBookmarkService());
+      await tester.pumpWidget(wrapWithProvider(provider));
+      await tester.pumpAndSettle();
+
+      fake.syncGate = Completer<void>();
+      final refreshFuture = provider.refresh();
+      await tester.pump();
+
+      final button = tester.widget<IconButton>(
+        find.ancestor(
+          of: find.byIcon(Icons.folder_open),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(button.onPressed, isNull);
+
+      fake.syncGate!.complete();
+      await refreshFuture;
+      await tester.pumpAndSettle();
     });
   });
 
   group('tag filtering integration', () {
-    testWidgets('shows "No releases match" when active filter has no results', (tester) async {
+    testWidgets('shows "No releases match" when active filter has no results',
+        (tester) async {
       final provider = await pumpLibraryScreen(tester,
           savedRoot: '/music',
           releases: [makeRelease('Album A')],

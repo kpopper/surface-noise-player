@@ -1,17 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:surface_noise_player/models/folder_info.dart';
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/library_provider.dart';
 import '../../helpers/fake_bookmark_service.dart';
 import '../../helpers/fake_library_service.dart';
 
-Release makeRelease(String name, {List<String> tags = const [], DateTime? lastActivityAt, bool isAvailable = true}) => Release(
+Release makeRelease(String name,
+        {List<String> tags = const [], DateTime? lastActivityAt}) =>
+    Release(
       folderPath: '/music/$name',
       name: name,
       tracks: const [],
       tags: tags,
       lastActivityAt: lastActivityAt,
-      isAvailable: isAvailable,
     );
 
 void main() {
@@ -28,7 +30,9 @@ void main() {
   tearDown(() => provider.dispose());
 
   group('init', () {
-    test('sets rootPath and loads releases from DB when a saved root exists', () async {
+    test(
+        'sets rootPath, syncs, and loads releases from DB when a saved root exists',
+        () async {
       fakeService.rootToReturn = '/music';
       fakeService.releasesToReturn = [makeRelease('Album A')];
 
@@ -37,17 +41,82 @@ void main() {
       expect(provider.rootPath, '/music');
       expect(provider.allReleases.length, 1);
       expect(provider.allReleases.first.name, 'Album A');
-      expect(fakeService.loadSelectedCallCount, 1);
+      expect(fakeService.syncedRoots, ['/music']);
+      // Loaded once immediately (to show what's already known) and once
+      // more after the sync completes.
+      expect(fakeService.loadLibraryCallCount, 2);
     });
 
-    test('leaves rootPath null and does not load when no saved root', () async {
+    test('shows already-known releases before the sync completes', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [makeRelease('Already Known')];
+      fakeService.syncGate = Completer<void>();
+
+      final initFuture = provider.init();
+      await Future(() {}); // let init() run up to the sync gate
+
+      expect(provider.allReleases.map((r) => r.name), ['Already Known']);
+      expect(provider.loading, isTrue);
+
+      fakeService.syncGate!.complete();
+      await initFuture;
+    });
+
+    test('shows a release as soon as syncLibrary reports progress, mid-sync',
+        () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [];
+      fakeService.syncGate = Completer<void>();
+
+      final initFuture = provider.init();
+      await Future(() {}); // let init() run up to the sync gate
+      expect(provider.allReleases, isEmpty);
+
+      // Simulate syncLibrary having just discovered one release.
+      fakeService.releasesToReturn = [makeRelease('Newly Found')];
+      fakeService.triggerProgress();
+      await Future(() {}); // let the reload triggered by the tick complete
+
+      expect(provider.allReleases.map((r) => r.name), ['Newly Found']);
+      expect(provider.loading, isTrue); // sync itself hasn't finished yet
+
+      fakeService.syncGate!.complete();
+      await initFuture;
+    });
+
+    test('coalesces rapid progress ticks instead of piling up reloads',
+        () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [];
+      fakeService.syncGate = Completer<void>();
+
+      final initFuture = provider.init();
+      await Future(() {}); // let init() run up to the sync gate
+      final countBefore = fakeService.loadLibraryCallCount;
+
+      // Fired back-to-back within the same synchronous stack, as concurrent
+      // discoveries completing near-simultaneously would.
+      fakeService.triggerProgress();
+      fakeService.triggerProgress();
+      fakeService.triggerProgress();
+      await Future(() {});
+
+      expect(fakeService.loadLibraryCallCount - countBefore, lessThan(3));
+
+      fakeService.syncGate!.complete();
+      await initFuture;
+    });
+
+    test('leaves rootPath null and does not sync or load when no saved root',
+        () async {
       fakeService.rootToReturn = null;
 
       await provider.init();
 
       expect(provider.rootPath, isNull);
       expect(provider.allReleases, isEmpty);
-      expect(fakeService.loadSelectedCallCount, 0);
+      expect(fakeService.syncedRoots, isEmpty);
+      expect(fakeService.loadLibraryCallCount, 0);
     });
 
     test('uses bookmark path over saved root when both exist', () async {
@@ -58,11 +127,12 @@ void main() {
       await provider.init();
 
       expect(provider.rootPath, '/bookmarked');
+      expect(fakeService.syncedRoots, ['/bookmarked']);
     });
   });
 
   group('refresh', () {
-    test('loads releases from DB when rootPath is set', () async {
+    test('syncs and reloads releases from DB when rootPath is set', () async {
       fakeService.rootToReturn = '/music';
       await provider.init();
 
@@ -70,42 +140,33 @@ void main() {
       await provider.refresh();
 
       expect(provider.allReleases.first.name, 'New Album');
-      expect(fakeService.loadSelectedCallCount, 2);
+      expect(fakeService.syncedRoots, ['/music', '/music']);
+      // init() loads twice (immediate + post-sync); refresh() loads once
+      // more (post-sync only — no separate "show what's known" step, since
+      // it's already showing the previous load).
+      expect(fakeService.loadLibraryCallCount, 3);
     });
 
     test('is a no-op when rootPath is null', () async {
       await provider.refresh();
-      expect(fakeService.loadSelectedCallCount, 0);
-    });
-
-    test('rescans each currently loaded release before reloading', () async {
-      fakeService.rootToReturn = '/music';
-      fakeService.releasesToReturn = [makeRelease('Album A'), makeRelease('Album B')];
-      await provider.init();
-
-      await provider.refresh();
-
-      expect(fakeService.rescannedPaths, containsAll(['/music/Album A', '/music/Album B']));
-    });
-
-    test('does not rescan when rootPath is null', () async {
-      await provider.refresh();
-      expect(fakeService.rescannedPaths, isEmpty);
+      expect(fakeService.syncedRoots, isEmpty);
+      expect(fakeService.loadLibraryCallCount, 0);
     });
   });
 
   group('pickFolder', () {
-    test('sets rootPath and clears releases without scanning', () async {
+    test('sets rootPath, syncs, and loads the new folder\'s library', () async {
       fakeService.rootToReturn = '/music';
       fakeService.releasesToReturn = [makeRelease('Old Album')];
       await provider.init();
 
       fakeService.rootToReturn = '/new-music';
+      fakeService.releasesToReturn = [makeRelease('New Album')];
       await provider.pickFolder();
 
       expect(provider.rootPath, '/new-music');
-      expect(provider.allReleases, isEmpty);
-      expect(fakeService.loadSelectedCallCount, 1); // only from init, not from pick
+      expect(provider.allReleases.map((r) => r.name), ['New Album']);
+      expect(fakeService.syncedRoots, ['/music', '/new-music']);
     });
 
     test('clears active tag filters', () async {
@@ -119,106 +180,7 @@ void main() {
       fakeService.rootToReturn = null;
       await provider.pickFolder();
       expect(provider.rootPath, isNull);
-    });
-  });
-
-  group('selectRelease', () {
-    setUp(() async {
-      fakeService.rootToReturn = '/music';
-      fakeService.releasesToReturn = [];
-      await provider.init();
-    });
-
-    test('adds the returned release to the library', () async {
-      fakeService.releaseToReturnForSelect = makeRelease('New Album');
-      await provider.selectRelease('/music/New Album');
-      expect(provider.allReleases.map((r) => r.name), contains('New Album'));
-    });
-
-    test('calls selectRelease on the service with the correct path', () async {
-      fakeService.releaseToReturnForSelect = makeRelease('Album');
-      await provider.selectRelease('/music/Album');
-      expect(fakeService.lastSelectedPath, '/music/Album');
-    });
-
-    test('calls awaitDownload on bookmarks before scanning', () async {
-      fakeService.releaseToReturnForSelect = makeRelease('Album');
-      await provider.selectRelease('/music/Album');
-      expect(fakeBookmarks.lastAwaitDownloadPath, '/music/Album');
-    });
-
-    test('marks release unavailable when download times out', () async {
-      fakeService.releaseToReturnForSelect = makeRelease('Album');
-      fakeBookmarks.awaitDownloadResult = false;
-      await provider.selectRelease('/music/Album');
-      expect(provider.allReleases.first.isAvailable, isFalse);
-    });
-
-    test('does nothing when service returns null (no audio files)', () async {
-      fakeService.releaseToReturnForSelect = null;
-      await provider.selectRelease('/music/Empty');
-      expect(provider.allReleases, isEmpty);
-    });
-
-    test('notifies listeners', () async {
-      fakeService.releaseToReturnForSelect = makeRelease('Album');
-      int notifyCount = 0;
-      provider.addListener(() => notifyCount++);
-      await provider.selectRelease('/music/Album');
-      expect(notifyCount, greaterThan(0));
-    });
-  });
-
-  group('deselectRelease', () {
-    setUp(() async {
-      fakeService.rootToReturn = '/music';
-      fakeService.releasesToReturn = [makeRelease('Album A'), makeRelease('Album B')];
-      await provider.init();
-    });
-
-    test('removes the release from the library', () async {
-      await provider.deselectRelease('/music/Album A');
-      expect(provider.allReleases.map((r) => r.name), isNot(contains('Album A')));
-      expect(provider.allReleases.map((r) => r.name), contains('Album B'));
-    });
-
-    test('calls deselectRelease on the service', () async {
-      await provider.deselectRelease('/music/Album A');
-      expect(fakeService.lastDeselectedPath, '/music/Album A');
-    });
-
-    test('calls evictRelease on bookmarks', () async {
-      await provider.deselectRelease('/music/Album A');
-      expect(fakeBookmarks.lastEvictPath, '/music/Album A');
-    });
-
-    test('notifies listeners', () async {
-      int notifyCount = 0;
-      provider.addListener(() => notifyCount++);
-      await provider.deselectRelease('/music/Album A');
-      expect(notifyCount, greaterThan(0));
-    });
-  });
-
-  group('listAllFolders', () {
-    test('delegates to service with rootPath', () async {
-      fakeService.rootToReturn = '/music';
-      fakeService.releasesToReturn = [];
-      await provider.init();
-
-      fakeService.foldersToReturn = [
-        const FolderInfo(path: '/music/A', name: 'A', isSelected: true),
-        const FolderInfo(path: '/music/B', name: 'B', isSelected: false),
-      ];
-
-      final folders = await provider.listAllFolders();
-      expect(folders.length, 2);
-      expect(folders.first.name, 'A');
-    });
-
-    test('returns empty when rootPath is null', () async {
-      final folders = await provider.listAllFolders();
-      expect(folders, isEmpty);
+      expect(fakeService.syncedRoots, isEmpty);
     });
   });
 
@@ -299,7 +261,9 @@ void main() {
 
     setUp(() async {
       fakeService.rootToReturn = '/music';
-      fakeService.releasesToReturn = [makeRelease('Album A', tags: ['jazz'])];
+      fakeService.releasesToReturn = [
+        makeRelease('Album A', tags: ['jazz'])
+      ];
       await provider.init();
       release = provider.allReleases.first;
     });
@@ -328,7 +292,9 @@ void main() {
 
     setUp(() async {
       fakeService.rootToReturn = '/music';
-      fakeService.releasesToReturn = [makeRelease('Album A', tags: ['jazz', 'vinyl'])];
+      fakeService.releasesToReturn = [
+        makeRelease('Album A', tags: ['jazz', 'vinyl'])
+      ];
       await provider.init();
       release = provider.allReleases.first;
     });

@@ -5,8 +5,7 @@ import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/abstract_player_service.dart';
 
 class FakePlayerService implements AbstractPlayerService {
-  final _sequenceStateController =
-      StreamController<SequenceState?>.broadcast();
+  final _sequenceStateController = StreamController<SequenceState?>.broadcast();
   final _playerStateController = StreamController<PlayerState>.broadcast();
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration?>.broadcast();

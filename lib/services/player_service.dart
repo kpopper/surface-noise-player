@@ -163,31 +163,31 @@ class PlayerService implements AbstractPlayerService {
     }
   }
 
-  List<AudioSource> _buildSources(Release release, List<Track> tracks) =>
-      tracks
-          .map((t) => AudioSource.uri(
-                Uri.file(t.path),
-                tag: MediaItem(
-                  id: t.path,
-                  title: t.title,
-                  artist: t.artist ?? release.albumArtist,
-                  album: release.albumTitle ?? release.name,
-                  artUri: release.artPath != null
-                      ? Uri.file(release.artPath!)
-                      : null,
-                ),
-              ))
-          .toList();
+  List<AudioSource> _buildSources(Release release, List<Track> tracks) => tracks
+      .map((t) => AudioSource.uri(
+            Uri.file(t.path),
+            tag: MediaItem(
+              id: t.path,
+              title: t.title,
+              artist: t.artist ?? release.albumArtist,
+              album: release.albumTitle ?? release.name,
+              artUri:
+                  release.artPath != null ? Uri.file(release.artPath!) : null,
+            ),
+          ))
+      .toList();
 
   void _handleMidPlaybackError(PlayerException error) {
     if (_manualLoadInProgress) return;
     final now = DateTime.now();
     if (_lastErrorEmitAt != null &&
-        now.difference(_lastErrorEmitAt!) < const Duration(milliseconds: 1500)) {
+        now.difference(_lastErrorEmitAt!) <
+            const Duration(milliseconds: 1500)) {
       return;
     }
     _lastErrorEmitAt = now;
-    _errorMessageController.add(_friendlyMessage(_trackTitleForIndex(error.index)));
+    _errorMessageController
+        .add(_friendlyMessage(_trackTitleForIndex(error.index)));
     if (_isLastTrackIndex(error.index)) {
       _stopPlayback();
     }

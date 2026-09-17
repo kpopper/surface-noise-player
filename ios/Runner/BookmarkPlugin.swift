@@ -49,6 +49,20 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                 return
             }
             downloadRelease(path: path, result: result)
+        case "downloadFile":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
+                return
+            }
+            downloadFile(path: path, result: result)
+        case "evictFile":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
+                return
+            }
+            evictFile(path: path, result: result)
         case "awaitDownload":
             guard let args = call.arguments as? [String: Any],
                   let path = args["path"] as? String else {
@@ -285,6 +299,22 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
         }
     }
 
+    // Requests download of a single file (not a whole folder). Fires the
+    // request and returns immediately — use isFileAvailable to poll for
+    // completion, rather than blocking here.
+    private func downloadFile(path: String, result: @escaping FlutterResult) {
+        DispatchQueue.global(qos: .utility).async {
+            let fm = FileManager.default
+            let url = URL(fileURLWithPath: path)
+            do {
+                try fm.startDownloadingUbiquitousItem(at: url)
+                DispatchQueue.main.async { result(true) }
+            } catch {
+                DispatchQueue.main.async { result(false) }
+            }
+        }
+    }
+
     private func awaitDownload(path: String, result: @escaping FlutterResult) {
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(atPath: path) else {
@@ -347,6 +377,14 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                 let url = URL(fileURLWithPath: path).appendingPathComponent(filename)
                 try? fm.evictUbiquitousItem(at: url)
             }
+            DispatchQueue.main.async { result(nil) }
+        }
+    }
+
+    // Evicts a single file (not a whole folder) from local iCloud storage. Best-effort.
+    private func evictFile(path: String, result: @escaping FlutterResult) {
+        DispatchQueue.global(qos: .utility).async {
+            try? FileManager.default.evictUbiquitousItem(at: URL(fileURLWithPath: path))
             DispatchQueue.main.async { result(nil) }
         }
     }
