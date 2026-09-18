@@ -581,6 +581,122 @@ void main() {
     });
   });
 
+  group('retryMissingArtwork', () {
+    late Directory tempRoot;
+    late DatabaseService dbService;
+    late FakeMusicBrainzService fakeMusicBrainz;
+    late LibraryService service;
+
+    setUp(() async {
+      tempRoot =
+          await Directory.systemTemp.createTemp('snp_bulk_art_retry_test_');
+      dbService = DatabaseService.forTest(inMemoryDatabasePath);
+      fakeMusicBrainz = FakeMusicBrainzService();
+      service = LibraryService.forTest(dbService, musicBrainz: fakeMusicBrainz);
+    });
+
+    tearDown(() async {
+      await dbService.closeForTest();
+      await tempRoot.delete(recursive: true);
+    });
+
+    Future<Directory> makeRelease(String name,
+        {String? artPath,
+        String? albumArtist,
+        String? albumTitle,
+        bool scanned = true}) async {
+      final dir = await Directory('${tempRoot.path}/$name').create();
+      await dbService.saveRelease(dir.path, name,
+          artPath: artPath, albumArtist: albumArtist, albumTitle: albumTitle);
+      if (scanned) await dbService.markFirstTrackScanned(dir.path);
+      return dir;
+    }
+
+    test('finds artwork via folder image for a release with none', () async {
+      final release = await makeRelease('Album',
+          albumArtist: 'Artist', albumTitle: 'Title');
+      await File('${release.path}/cover.jpg').create();
+
+      await service.retryMissingArtwork();
+
+      final row = await dbService.loadRelease(release.path);
+      expect(row!['art_path'], '${release.path}/cover.jpg');
+    });
+
+    test('falls back to MusicBrainz when no folder image exists', () async {
+      final release = await makeRelease('Album',
+          albumArtist: 'Artist', albumTitle: 'Title');
+      fakeMusicBrainz.artPathToReturn = '${release.path}/cover.jpg';
+
+      await service.retryMissingArtwork();
+
+      final row = await dbService.loadRelease(release.path);
+      expect(row!['art_path'], '${release.path}/cover.jpg');
+    });
+
+    test('skips a release that already has valid artwork', () async {
+      final release = await makeRelease('Album',
+          albumArtist: 'Artist', albumTitle: 'Title');
+      await File('${release.path}/existing.jpg').create();
+      await dbService.updateArtPath(
+          release.path, '${release.path}/existing.jpg');
+
+      await service.retryMissingArtwork();
+
+      expect(fakeMusicBrainz.wasCalled, isFalse);
+    });
+
+    test('retries a release whose stored art_path file has been deleted',
+        () async {
+      final release = await makeRelease('Album',
+          artPath: '${tempRoot.path}/Album/gone.jpg',
+          albumArtist: 'Artist',
+          albumTitle: 'Title');
+      fakeMusicBrainz.artPathToReturn = '${release.path}/cover.jpg';
+
+      await service.retryMissingArtwork();
+
+      final row = await dbService.loadRelease(release.path);
+      expect(row!['art_path'], '${release.path}/cover.jpg');
+    });
+
+    test('skips an unresolved release', () async {
+      await makeRelease('Album',
+          albumArtist: 'Artist', albumTitle: 'Title', scanned: false);
+
+      await service.retryMissingArtwork();
+
+      expect(fakeMusicBrainz.wasCalled, isFalse);
+    });
+
+    test('calls onProgress once per release attempted', () async {
+      await makeRelease('Album A', albumArtist: 'A', albumTitle: 'A');
+      await makeRelease('Album B', albumArtist: 'B', albumTitle: 'B');
+      var calls = 0;
+
+      await service.retryMissingArtwork(onProgress: () => calls++);
+
+      expect(calls, 2);
+    });
+
+    test('calls onArtworkResolved only when something was actually found',
+        () async {
+      // "Found" resolves via a folder image (free); "NotFound" has neither
+      // a folder image nor a MusicBrainz match (fakeMusicBrainz's default
+      // artPathToReturn is null), so only one of the two should trigger
+      // onArtworkResolved.
+      final found =
+          await makeRelease('Found', albumArtist: 'A', albumTitle: 'A');
+      await File('${found.path}/cover.jpg').create();
+      await makeRelease('NotFound', albumArtist: 'B', albumTitle: 'B');
+      final resolvedPaths = <String>[];
+
+      await service.retryMissingArtwork(onArtworkResolved: resolvedPaths.add);
+
+      expect(resolvedPaths, ['${found.path}/cover.jpg']);
+    });
+  });
+
   group('loadLibrary', () {
     late DatabaseService dbService;
     late LibraryService service;

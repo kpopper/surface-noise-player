@@ -262,6 +262,38 @@ class LibraryService {
     return artPath;
   }
 
+  // Re-attempts artwork for every currently-known, fully-scanned release
+  // that still has none (or whose stored art_path file has gone missing on
+  // disk). Only ever invoked from an explicit refresh — never automatically
+  // — so a release with no findable artwork doesn't get hit repeatedly
+  // without the user asking. Processed one at a time; MusicBrainz calls are
+  // serialized by MusicBrainzService itself, so no extra throttling is
+  // needed here. A release still going through its first-track scan this
+  // same sync is skipped — it already gets its own MusicBrainz attempt via
+  // the unresolved-release retry path, so retrying it again here would
+  // just double up.
+  //
+  // onArtworkResolved fires only when a release's artwork was actually
+  // found (so a caller can invalidate an image cache entry for that exact
+  // path); onProgress fires for every release attempted, found or not (so
+  // a caller can refresh the UI as the sweep progresses).
+  Future<void> retryMissingArtwork({
+    void Function(String artPath)? onArtworkResolved,
+    void Function()? onProgress,
+  }) async {
+    final rows = await _db.loadAllReleases();
+    for (final row in rows) {
+      if ((row['first_track_scanned'] as int) != 1) continue;
+      final artPath = row['art_path'] as String?;
+      if (artPath != null && File(artPath).existsSync()) continue;
+      final resolved = await retryArtwork(row['folder_path'] as String,
+          albumArtist: row['album_artist'] as String?,
+          albumTitle: row['album_title'] as String?);
+      if (resolved != null) onArtworkResolved?.call(resolved);
+      onProgress?.call();
+    }
+  }
+
   // The single place artwork is resolved from every source, in priority
   // order: a folder image file, then (only when the first track has
   // already been downloaded this call, i.e. during a scan) its embedded

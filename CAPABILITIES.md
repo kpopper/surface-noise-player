@@ -58,7 +58,10 @@ writing a feature; remove or update it when behaviour changes.
 - If none of those are present, the first image file found in the folder is used
 - If no image file is present, embedded artwork from the audio files is extracted and used
 - A MusicBrainz Cover Art Archive lookup (by album artist — falling back to the first track's own artist tag when album artist is absent — and album title, preferring the earliest release date, fetched at the release-group level so any edition's scanned cover satisfies the lookup) is attempted during a release's initial scan whenever neither a local file nor embedded artwork is found, saving the result as `cover.jpg` in the release folder
+- If searching with the full artist name finds nothing and it starts with "The ", the lookup retries once without it — tags often include a leading "The" that MusicBrainz's canonical artist credit sometimes omits
 - If a release still has no artwork, opening its release screen makes a single further attempt (a folder-image recheck, then MusicBrainz again — falling back to a fresh read of the first track's own artist tag first if the release has no stored album artist to search with) — not retried again while the screen stays open, and not attempted automatically in the background otherwise
+- Tapping the refresh button also retries artwork resolution for every currently-known, fully-scanned release that still has none, in addition to the regular directory sync (see Library screen) — this only happens on an explicit refresh, never automatically on launch
+- MusicBrainz lookups are serialized to at most one request per second (matching its published rate limit), regardless of how many releases are being resolved at once — so a refresh retrying artwork for many releases may take a while to work through all of them
 - If neither a file nor embedded artwork is available, `artPath` is null and a placeholder is shown
 - A release card shows a square thumbnail of the cover art (or placeholder) on the left
 - The release screen shows the cover art as a full-width header above the track list

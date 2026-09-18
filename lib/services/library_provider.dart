@@ -68,7 +68,7 @@ class LibraryProvider extends ChangeNotifier {
 
   Future<void> refresh() async {
     if (rootPath == null) return;
-    await _syncInBackground(rootPath!);
+    await _syncInBackground(rootPath!, retryMissingArt: true);
   }
 
   // Syncs the directory with the database, reloading the library as changes
@@ -76,10 +76,23 @@ class LibraryProvider extends ChangeNotifier {
   // once the whole sync finishes. Already-loaded releases stay visible (and
   // tappable) the whole time — `loading` only drives the app bar's spinner,
   // not the release list.
-  Future<void> _syncInBackground(String root) async {
+  //
+  // retryMissingArt additionally sweeps every fully-scanned release still
+  // missing artwork after the regular sync — only refresh() opts into this
+  // (never init()/pickFolder()), so nothing retries automatically on
+  // launch, only on an explicit refresh tap.
+  Future<void> _syncInBackground(String root,
+      {bool retryMissingArt = false}) async {
     loading = true;
     notifyListeners();
     await _svc.syncLibrary(root, onProgress: _reloadReleases);
+    if (retryMissingArt) {
+      await _svc.retryMissingArtwork(
+        onArtworkResolved: (artPath) =>
+            PaintingBinding.instance.imageCache.evict(FileImage(File(artPath))),
+        onProgress: _reloadReleases,
+      );
+    }
     await _reloadReleases(); // catch-all, in case the last progress tick raced this
     loading = false;
     notifyListeners();

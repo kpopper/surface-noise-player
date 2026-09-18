@@ -36,6 +36,7 @@ class FakeLibraryService implements LibraryService {
   String? lastArtRetryAlbumTitle;
   int artRetryCallCount = 0;
   String? artRetryResult;
+  int retryMissingArtworkCallCount = 0;
 
   @override
   Future<String?> getSavedRoot() async => rootToReturn;
@@ -94,5 +95,13 @@ class FakeLibraryService implements LibraryService {
     lastArtRetryAlbumArtist = albumArtist;
     lastArtRetryAlbumTitle = albumTitle;
     return artRetryResult;
+  }
+
+  @override
+  Future<void> retryMissingArtwork({
+    void Function(String artPath)? onArtworkResolved,
+    void Function()? onProgress,
+  }) async {
+    retryMissingArtworkCallCount++;
   }
 }

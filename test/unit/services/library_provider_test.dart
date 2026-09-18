@@ -135,6 +135,12 @@ void main() {
       expect(provider.rootPath, '/bookmarked');
       expect(fakeService.syncedRoots, ['/bookmarked']);
     });
+
+    test('does not retry missing artwork', () async {
+      fakeService.rootToReturn = '/music';
+      await provider.init();
+      expect(fakeService.retryMissingArtworkCallCount, 0);
+    });
   });
 
   group('refresh', () {
@@ -158,6 +164,15 @@ void main() {
       expect(fakeService.syncedRoots, isEmpty);
       expect(fakeService.loadLibraryCallCount, 0);
     });
+
+    test('also retries missing artwork', () async {
+      fakeService.rootToReturn = '/music';
+      await provider.init();
+
+      await provider.refresh();
+
+      expect(fakeService.retryMissingArtworkCallCount, 1);
+    });
   });
 
   group('pickFolder', () {
@@ -173,6 +188,12 @@ void main() {
       expect(provider.rootPath, '/new-music');
       expect(provider.allReleases.map((r) => r.name), ['New Album']);
       expect(fakeService.syncedRoots, ['/music', '/new-music']);
+    });
+
+    test('does not retry missing artwork', () async {
+      fakeService.rootToReturn = '/music';
+      await provider.pickFolder();
+      expect(fakeService.retryMissingArtworkCallCount, 0);
     });
 
     test('clears active tag filters', () async {
