@@ -26,7 +26,8 @@ class TagFilterBar extends StatelessWidget {
               height: 48,
               child: ListView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 children: [
                   if (active.isNotEmpty)
                     Padding(

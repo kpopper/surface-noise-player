@@ -19,7 +19,8 @@ void main() {
           body: Center(
             child: ElevatedButton(
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => NowPlayingScreen(playerService: fake)),
+                MaterialPageRoute(
+                    builder: (_) => NowPlayingScreen(playerService: fake)),
               ),
               child: const Text('Library'),
             ),

@@ -1,4 +1,5 @@
-import 'package:surface_noise_player/models/folder_info.dart';
+import 'dart:async';
+
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/library_service.dart';
 
@@ -6,19 +7,36 @@ class FakeLibraryService implements LibraryService {
   String? rootToReturn;
   List<Release> releasesToReturn = [];
   List<String> tagsToReturn = [];
-  List<FolderInfo> foldersToReturn = [];
-  Release? releaseToReturnForSelect;
+
+  // If set, syncLibrary waits for this to complete before returning — lets
+  // tests observe the transient "loading" state instead of it resolving
+  // synchronously within a single pump.
+  Completer<void>? syncGate;
+
+  // Captured from the most recent syncLibrary call, so a test can simulate
+  // a mid-sync progress tick (e.g. a release being discovered) by calling
+  // triggerProgress() while syncGate is still pending.
+  void Function()? _capturedOnProgress;
+  void triggerProgress() => _capturedOnProgress?.call();
 
   // Recorded calls
   String? lastAddedTagPath;
   String? lastAddedTag;
   String? lastRemovedTagPath;
   String? lastRemovedTag;
-  String? lastSelectedPath;
-  String? lastDeselectedPath;
   String? lastRecordedPlayPath;
-  int loadSelectedCallCount = 0;
-  List<String> rescannedPaths = [];
+  int loadLibraryCallCount = 0;
+  List<String> syncedRoots = [];
+  String? lastUpdatedTrackPath;
+  String? lastUpdatedTrackTitle;
+  int? lastUpdatedTrackNumber;
+  String? lastUpdatedTrackArtist;
+  String? lastArtRetryFolderPath;
+  String? lastArtRetryAlbumArtist;
+  String? lastArtRetryAlbumTitle;
+  int artRetryCallCount = 0;
+  String? artRetryResult;
+  int retryMissingArtworkCallCount = 0;
 
   @override
   Future<String?> getSavedRoot() async => rootToReturn;
@@ -27,25 +45,17 @@ class FakeLibraryService implements LibraryService {
   Future<String?> pickLibraryFolder() async => rootToReturn;
 
   @override
-  Future<List<Release>> loadSelectedReleases() async {
-    loadSelectedCallCount++;
+  Future<void> syncLibrary(String rootPath,
+      {void Function()? onProgress}) async {
+    syncedRoots.add(rootPath);
+    _capturedOnProgress = onProgress;
+    if (syncGate != null) await syncGate!.future;
+  }
+
+  @override
+  Future<List<Release>> loadLibrary() async {
+    loadLibraryCallCount++;
     return releasesToReturn;
-  }
-
-  @override
-  Future<Release?> selectRelease(String folderPath) async {
-    lastSelectedPath = folderPath;
-    return releaseToReturnForSelect;
-  }
-
-  @override
-  Future<void> deselectRelease(String folderPath) async {
-    lastDeselectedPath = folderPath;
-  }
-
-  @override
-  Future<List<FolderInfo>> listAllFolders(String rootPath) async {
-    return foldersToReturn;
   }
 
   @override
@@ -54,12 +64,13 @@ class FakeLibraryService implements LibraryService {
   }
 
   @override
-  Future<void> rescanRelease(String folderPath) async {
-    rescannedPaths.add(folderPath);
+  Future<void> updateTrackMetadata(String filePath,
+      {required String title, required int trackNumber, String? artist}) async {
+    lastUpdatedTrackPath = filePath;
+    lastUpdatedTrackTitle = title;
+    lastUpdatedTrackNumber = trackNumber;
+    lastUpdatedTrackArtist = artist;
   }
-
-  @override
-  Future<String?> refreshArtwork(String folderPath) async => null;
 
   @override
   Future<List<String>> allTags() async => tagsToReturn;
@@ -74,5 +85,23 @@ class FakeLibraryService implements LibraryService {
   Future<void> removeTag(String folderPath, String tag) async {
     lastRemovedTagPath = folderPath;
     lastRemovedTag = tag;
+  }
+
+  @override
+  Future<String?> retryArtwork(String folderPath,
+      {required String? albumArtist, required String? albumTitle}) async {
+    artRetryCallCount++;
+    lastArtRetryFolderPath = folderPath;
+    lastArtRetryAlbumArtist = albumArtist;
+    lastArtRetryAlbumTitle = albumTitle;
+    return artRetryResult;
+  }
+
+  @override
+  Future<void> retryMissingArtwork({
+    void Function(String artPath)? onArtworkResolved,
+    void Function()? onProgress,
+  }) async {
+    retryMissingArtworkCallCount++;
   }
 }

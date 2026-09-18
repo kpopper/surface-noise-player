@@ -4,6 +4,8 @@ class Track {
   final int trackNumber;
   final Duration? duration;
   final String? artist;
+  // Has real (file-tag) metadata replaced the filename-derived guess yet?
+  final bool metadataRead;
 
   const Track({
     required this.path,
@@ -11,6 +13,7 @@ class Track {
     required this.trackNumber,
     this.duration,
     this.artist,
+    this.metadataRead = false,
   });
 }
 
@@ -23,7 +26,6 @@ class Release {
   final String? albumTitle;
   final String? albumArtist;
   final DateTime? lastActivityAt;
-  final bool isAvailable;
 
   const Release({
     required this.folderPath,
@@ -34,18 +36,18 @@ class Release {
     this.albumTitle,
     this.albumArtist,
     this.lastActivityAt,
-    this.isAvailable = true,
   });
 
-  Release copyWith({List<String>? tags, DateTime? lastActivityAt, bool? isAvailable}) => Release(
+  Release copyWith(
+          {List<String>? tags, DateTime? lastActivityAt, String? artPath}) =>
+      Release(
         folderPath: folderPath,
         name: name,
         tracks: tracks,
         tags: tags ?? this.tags,
-        artPath: artPath,
+        artPath: artPath ?? this.artPath,
         albumTitle: albumTitle,
         albumArtist: albumArtist,
         lastActivityAt: lastActivityAt ?? this.lastActivityAt,
-        isAvailable: isAvailable ?? this.isAvailable,
       );
 }

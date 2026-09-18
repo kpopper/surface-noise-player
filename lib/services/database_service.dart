@@ -26,10 +26,11 @@ class DatabaseService {
   }
 
   Future<Database> _open() async {
-    final resolvedPath = _overridePath ?? join(await getDatabasesPath(), 'surface_noise.db');
+    final resolvedPath =
+        _overridePath ?? join(await getDatabasesPath(), 'surface_noise.db');
     return openDatabase(
       resolvedPath,
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE tags (
@@ -51,17 +52,13 @@ class DatabaseService {
           )
         ''');
         await db.execute('''
-          CREATE TABLE selected_releases (
-            folder_path TEXT PRIMARY KEY
-          )
-        ''');
-        await db.execute('''
           CREATE TABLE releases (
             folder_path TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             art_path TEXT,
             album_title TEXT,
-            album_artist TEXT
+            album_artist TEXT,
+            first_track_scanned INTEGER NOT NULL DEFAULT 0
           )
         ''');
         await db.execute('''
@@ -70,7 +67,8 @@ class DatabaseService {
             folder_path TEXT NOT NULL,
             title TEXT NOT NULL,
             track_number INTEGER NOT NULL,
-            artist TEXT
+            artist TEXT,
+            metadata_read INTEGER NOT NULL DEFAULT 0
           )
         ''');
       },
@@ -108,6 +106,20 @@ class DatabaseService {
             )
           ''');
         }
+        if (oldVersion < 4) {
+          // The library is now everything on disk, synced automatically —
+          // there's no manual selection step left to back with a table.
+          await db.execute('DROP TABLE IF EXISTS selected_releases');
+          await db.execute(
+              'ALTER TABLE tracks ADD COLUMN metadata_read INTEGER NOT NULL DEFAULT 0');
+          await db.execute(
+              'ALTER TABLE releases ADD COLUMN first_track_scanned INTEGER NOT NULL DEFAULT 0');
+          // Releases from before this migration already went through a full
+          // scan under the old model — mark them scanned so the next sync
+          // doesn't pointlessly re-download-and-evict every existing
+          // release's first track.
+          await db.execute('UPDATE releases SET first_track_scanned = 1');
+        }
       },
     );
   }
@@ -116,7 +128,6 @@ class DatabaseService {
 
   Future<void> resetLibraryData() async {
     final d = await db;
-    await d.delete('selected_releases');
     await d.delete('releases');
     await d.delete('tracks');
     await d.delete('tags');
@@ -181,7 +192,10 @@ class DatabaseService {
     final d = await db;
     await d.insert(
       'release_activity',
-      {'folder_path': folderPath, 'last_activity_at': time.millisecondsSinceEpoch},
+      {
+        'folder_path': folderPath,
+        'last_activity_at': time.millisecondsSinceEpoch
+      },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -194,32 +208,6 @@ class DatabaseService {
         r['folder_path'] as String:
             DateTime.fromMillisecondsSinceEpoch(r['last_activity_at'] as int),
     };
-  }
-
-  // MARK: - Selected releases
-
-  Future<void> addSelectedRelease(String folderPath) async {
-    final d = await db;
-    await d.insert(
-      'selected_releases',
-      {'folder_path': folderPath},
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
-  }
-
-  Future<void> removeSelectedRelease(String folderPath) async {
-    final d = await db;
-    await d.delete(
-      'selected_releases',
-      where: 'folder_path = ?',
-      whereArgs: [folderPath],
-    );
-  }
-
-  Future<List<String>> allSelectedPaths() async {
-    final d = await db;
-    final rows = await d.query('selected_releases');
-    return rows.map((r) => r['folder_path'] as String).toList();
   }
 
   // MARK: - Release metadata
@@ -263,8 +251,43 @@ class DatabaseService {
 
   Future<void> deleteRelease(String folderPath) async {
     final d = await db;
-    await d.delete('releases', where: 'folder_path = ?', whereArgs: [folderPath]);
+    await d
+        .delete('releases', where: 'folder_path = ?', whereArgs: [folderPath]);
     await d.delete('tracks', where: 'folder_path = ?', whereArgs: [folderPath]);
+  }
+
+  // Every folder_path currently in `releases` — the sync entry point's
+  // source of truth for "what does the library already know about."
+  Future<List<String>> allReleasePaths() async {
+    final d = await db;
+    final rows = await d.query('releases', columns: ['folder_path']);
+    return rows.map((r) => r['folder_path'] as String).toList();
+  }
+
+  // Bulk-loads every release row — the library is no longer a small
+  // hand-picked subset but everything on disk.
+  Future<List<Map<String, dynamic>>> loadAllReleases() async {
+    final d = await db;
+    return d.query('releases');
+  }
+
+  // Releases whose first-track scan has never successfully completed (either
+  // never attempted, or a previous attempt timed out) — sync retries these.
+  Future<List<String>> unscannedReleasePaths() async {
+    final d = await db;
+    final rows = await d.query('releases',
+        columns: ['folder_path'], where: 'first_track_scanned = 0');
+    return rows.map((r) => r['folder_path'] as String).toList();
+  }
+
+  Future<void> markFirstTrackScanned(String folderPath) async {
+    final d = await db;
+    await d.update(
+      'releases',
+      {'first_track_scanned': 1},
+      where: 'folder_path = ?',
+      whereArgs: [folderPath],
+    );
   }
 
   // MARK: - Tracks
@@ -290,6 +313,25 @@ class DatabaseService {
       where: 'folder_path = ?',
       whereArgs: [folderPath],
       orderBy: 'track_number ASC',
+    );
+  }
+
+  // Writes back a track's real (file-derived) metadata and marks it as read.
+  // No call site yet — this is the API a later phase calls once a track is
+  // first played, without needing any further changes to this layer.
+  Future<void> markTrackMetadataRead(String filePath,
+      {required String title, required int trackNumber, String? artist}) async {
+    final d = await db;
+    await d.update(
+      'tracks',
+      {
+        'title': title,
+        'track_number': trackNumber,
+        'artist': artist,
+        'metadata_read': 1
+      },
+      where: 'file_path = ?',
+      whereArgs: [filePath],
     );
   }
 }

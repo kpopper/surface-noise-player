@@ -18,6 +18,11 @@ abstract class BookmarkService {
   // waiting for the download to complete — use awaitDownload for that.
   Future<bool> downloadRelease(String folderPath);
 
+  // Requests iCloud download of a single file. Returns false if the request
+  // fails. Returns immediately without waiting for the download to complete
+  // — poll isFileAvailable for that.
+  Future<bool> downloadFile(String path);
+
   // Triggers iCloud download of all files in a folder and waits until they are
   // all locally available. Returns false on timeout or if the trigger fails.
   // Used before scanning a newly selected release.
@@ -26,13 +31,17 @@ abstract class BookmarkService {
   // Evicts all files in a folder from local iCloud storage. Best-effort.
   Future<void> evictRelease(String folderPath);
 
+  // Evicts a single file from local iCloud storage. Best-effort.
+  Future<void> evictFile(String path);
+
   // Checks whether a single file is available locally right now (downloaded,
   // or not iCloud-backed at all) without triggering a download.
   Future<bool> isFileAvailable(String path);
 }
 
 class _BookmarkServiceImpl implements BookmarkService {
-  static const _channel = MethodChannel('com.yourname.surface_noise_player/bookmarks');
+  static const _channel =
+      MethodChannel('com.yourname.surface_noise_player/bookmarks');
   String? _activePath;
 
   @override
@@ -68,7 +77,19 @@ class _BookmarkServiceImpl implements BookmarkService {
   @override
   Future<bool> downloadRelease(String folderPath) async {
     try {
-      final result = await _channel.invokeMethod<bool>('downloadRelease', {'path': folderPath});
+      final result = await _channel
+          .invokeMethod<bool>('downloadRelease', {'path': folderPath});
+      return result ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> downloadFile(String path) async {
+    try {
+      final result =
+          await _channel.invokeMethod<bool>('downloadFile', {'path': path});
       return result ?? false;
     } on PlatformException {
       return false;
@@ -78,7 +99,8 @@ class _BookmarkServiceImpl implements BookmarkService {
   @override
   Future<bool> awaitDownload(String folderPath) async {
     try {
-      final result = await _channel.invokeMethod<bool>('awaitDownload', {'path': folderPath});
+      final result = await _channel
+          .invokeMethod<bool>('awaitDownload', {'path': folderPath});
       return result ?? false;
     } on PlatformException {
       return false;
@@ -95,9 +117,19 @@ class _BookmarkServiceImpl implements BookmarkService {
   }
 
   @override
+  Future<void> evictFile(String path) async {
+    try {
+      await _channel.invokeMethod('evictFile', {'path': path});
+    } on PlatformException {
+      // best-effort
+    }
+  }
+
+  @override
   Future<bool> isFileAvailable(String path) async {
     try {
-      final result = await _channel.invokeMethod<bool>('isFileAvailable', {'path': path});
+      final result =
+          await _channel.invokeMethod<bool>('isFileAvailable', {'path': path});
       return result ?? false;
     } on PlatformException {
       return false;
