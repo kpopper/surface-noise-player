@@ -31,6 +31,11 @@ class FakeLibraryService implements LibraryService {
   String? lastUpdatedTrackTitle;
   int? lastUpdatedTrackNumber;
   String? lastUpdatedTrackArtist;
+  String? lastArtRetryFolderPath;
+  String? lastArtRetryAlbumArtist;
+  String? lastArtRetryAlbumTitle;
+  int artRetryCallCount = 0;
+  String? artRetryResult;
 
   @override
   Future<String?> getSavedRoot() async => rootToReturn;
@@ -79,5 +84,15 @@ class FakeLibraryService implements LibraryService {
   Future<void> removeTag(String folderPath, String tag) async {
     lastRemovedTagPath = folderPath;
     lastRemovedTag = tag;
+  }
+
+  @override
+  Future<String?> retryArtwork(String folderPath,
+      {required String? albumArtist, required String? albumTitle}) async {
+    artRetryCallCount++;
+    lastArtRetryFolderPath = folderPath;
+    lastArtRetryAlbumArtist = albumArtist;
+    lastArtRetryAlbumTitle = albumTitle;
+    return artRetryResult;
   }
 }

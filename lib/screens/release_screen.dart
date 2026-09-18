@@ -49,6 +49,13 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
     super.initState();
     _playerSvc = widget.playerService ?? PlayerService.instance;
     _bookmarks = widget.bookmarkService ?? BookmarkService.instance;
+    // A single on-demand retry, not repeated while this screen stays open —
+    // see LibraryProvider.retryArtworkIfMissing.
+    if (widget.release.artPath == null) {
+      unawaited(context
+          .read<LibraryProvider>()
+          .retryArtworkIfMissing(widget.release));
+    }
   }
 
   // Re-checks availability whenever the live track list actually changes
@@ -246,6 +253,14 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                         if (release.artPath != null)
                           Image.file(
                             File(release.artPath!),
+                            // Bypasses Flutter's image cache, which is keyed
+                            // by file path — without this, artwork that gets
+                            // re-resolved at the same path (e.g. cover.jpg
+                            // rewritten after a bad MusicBrainz match is
+                            // cleared and retried) would keep showing
+                            // whatever was cached for that path, not the new
+                            // file's actual bytes.
+                            key: ValueKey(release.artPath),
                             width: double.infinity,
                             fit: BoxFit.fitWidth,
                             errorBuilder: (_, __, ___) =>

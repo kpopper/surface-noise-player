@@ -262,6 +262,61 @@ void main() {
     });
   });
 
+  group('artwork retry', () {
+    testWidgets(
+        'opening a release with no artwork triggers a single retry, not repeated on rebuild',
+        (tester) async {
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [],
+        tags: const [],
+      );
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(home: ReleaseScreen(release: release)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakeService.artRetryCallCount, 1);
+
+      await tester.pump(); // a further rebuild should not retry again
+      expect(fakeService.artRetryCallCount, 1);
+    });
+
+    testWidgets('opening a release that already has artwork does not retry',
+        (tester) async {
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [],
+        tags: const [],
+        artPath: '/music/Test/cover.jpg',
+      );
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(home: ReleaseScreen(release: release)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakeService.artRetryCallCount, 0);
+    });
+  });
+
   group('auto-close', () {
     testWidgets('closes itself when the release is removed from the library',
         (tester) async {

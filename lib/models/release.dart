@@ -38,12 +38,14 @@ class Release {
     this.lastActivityAt,
   });
 
-  Release copyWith({List<String>? tags, DateTime? lastActivityAt}) => Release(
+  Release copyWith(
+          {List<String>? tags, DateTime? lastActivityAt, String? artPath}) =>
+      Release(
         folderPath: folderPath,
         name: name,
         tracks: tracks,
         tags: tags ?? this.tags,
-        artPath: artPath,
+        artPath: artPath ?? this.artPath,
         albumTitle: albumTitle,
         albumArtist: albumArtist,
         lastActivityAt: lastActivityAt ?? this.lastActivityAt,
