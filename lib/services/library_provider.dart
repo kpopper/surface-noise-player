@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import '../models/release.dart';
 import 'bookmark_service.dart';
 import 'library_service.dart';
@@ -66,7 +68,7 @@ class LibraryProvider extends ChangeNotifier {
 
   Future<void> refresh() async {
     if (rootPath == null) return;
-    await _syncInBackground(rootPath!);
+    await _syncInBackground(rootPath!, retryMissingArt: true);
   }
 
   // Syncs the directory with the database, reloading the library as changes
@@ -74,10 +76,23 @@ class LibraryProvider extends ChangeNotifier {
   // once the whole sync finishes. Already-loaded releases stay visible (and
   // tappable) the whole time — `loading` only drives the app bar's spinner,
   // not the release list.
-  Future<void> _syncInBackground(String root) async {
+  //
+  // retryMissingArt additionally sweeps every fully-scanned release still
+  // missing artwork after the regular sync — only refresh() opts into this
+  // (never init()/pickFolder()), so nothing retries automatically on
+  // launch, only on an explicit refresh tap.
+  Future<void> _syncInBackground(String root,
+      {bool retryMissingArt = false}) async {
     loading = true;
     notifyListeners();
     await _svc.syncLibrary(root, onProgress: _reloadReleases);
+    if (retryMissingArt) {
+      await _svc.retryMissingArtwork(
+        onArtworkResolved: (artPath) =>
+            PaintingBinding.instance.imageCache.evict(FileImage(File(artPath))),
+        onProgress: _reloadReleases,
+      );
+    }
     await _reloadReleases(); // catch-all, in case the last progress tick raced this
     loading = false;
     notifyListeners();
@@ -221,5 +236,29 @@ class LibraryProvider extends ChangeNotifier {
       lastActivityAt: release.lastActivityAt,
     );
     notifyListeners();
+  }
+
+  // Called once by ReleaseScreen when it opens on a release with no
+  // artwork. No-ops (and doesn't touch the service) if the release already
+  // has art, so it's safe to call defensively. Returns whether artwork was
+  // newly found, so a caller can report success/failure.
+  Future<bool> retryArtworkIfMissing(Release release) async {
+    if (release.artPath != null) return false;
+    final artPath = await _svc.retryArtwork(release.folderPath,
+        albumArtist: release.albumArtist, albumTitle: release.albumTitle);
+    if (artPath == null) return false;
+    // Flutter's image cache is keyed by file path, not content — without
+    // this, a path that was already rendered once this session (e.g. the
+    // same cover.jpg filename, now holding a freshly-resolved image) would
+    // keep showing whatever was cached for that path instead of the new
+    // bytes.
+    PaintingBinding.instance.imageCache.evict(FileImage(File(artPath)));
+    final index =
+        _releases.indexWhere((r) => r.folderPath == release.folderPath);
+    if (index >= 0) {
+      _releases[index] = _releases[index].copyWith(artPath: artPath);
+      notifyListeners();
+    }
+    return true;
   }
 }

@@ -4,6 +4,7 @@ import '../models/release.dart';
 import 'bookmark_service.dart';
 import 'database_service.dart';
 import 'metadata_service.dart';
+import 'music_brainz_service.dart';
 
 const _audioExtensions = {
   '.mp3',
@@ -29,6 +30,7 @@ class LibraryService {
   final DatabaseService _db;
   final MetadataService _metadata;
   final BookmarkService _bookmarks;
+  final MusicBrainzService _musicBrainz;
 
   // How often to re-check availability while waiting for a release's first
   // track to download during a scan, and how long to wait before giving up
@@ -42,11 +44,13 @@ class LibraryService {
     DatabaseService? db,
     MetadataService? metadata,
     BookmarkService? bookmarks,
+    MusicBrainzService? musicBrainz,
     Duration? scanPollInterval,
     Duration? scanDownloadTimeout,
   ])  : _db = db ?? DatabaseService.instance,
         _metadata = metadata ?? MetadataService.instance,
         _bookmarks = bookmarks ?? BookmarkService.instance,
+        _musicBrainz = musicBrainz ?? MusicBrainzService.instance,
         _scanPollInterval = scanPollInterval ?? const Duration(seconds: 1),
         _scanDownloadTimeout =
             scanDownloadTimeout ?? const Duration(seconds: 30);
@@ -58,11 +62,12 @@ class LibraryService {
     DatabaseService db, {
     MetadataService? metadata,
     BookmarkService? bookmarks,
+    MusicBrainzService? musicBrainz,
     Duration? scanPollInterval,
     Duration? scanDownloadTimeout,
   }) =>
-      LibraryService._(
-          db, metadata, bookmarks, scanPollInterval, scanDownloadTimeout);
+      LibraryService._(db, metadata, bookmarks, musicBrainz, scanPollInterval,
+          scanDownloadTimeout);
 
   Future<String?> pickLibraryFolder() async {
     final currentRoot = await _db.savedLibraryRoot();
@@ -192,9 +197,7 @@ class LibraryService {
   // from the release's first track (by sorted filename), downloading and
   // evicting it as needed. Shared by brand-new discovery and by retrying a
   // release whose first scan previously timed out. Does not touch the rest
-  // of the release's track rows. Deliberately does not attempt a MusicBrainz
-  // lookup — that's a later, lazy "only when the release view is opened"
-  // feature.
+  // of the release's track rows.
   Future<void> _resolveFirstTrack(String folderPath, String folderName) async {
     final quickTracks = await _listTracksQuick(folderPath);
     if (quickTracks.isEmpty) {
@@ -202,14 +205,16 @@ class LibraryService {
     }
     final firstTrackPath = quickTracks.first.path;
 
-    var artPath =
+    final folderArtPath =
         await _findArtFile(folderPath); // folder-image check only — no download
     await _bookmarks.downloadFile(firstTrackPath);
     if (!await _awaitFileAvailable(firstTrackPath)) {
       // Still worth keeping any folder-image art found without a download,
       // even though the metadata read didn't happen this time. The release
       // stays unscanned either way, so it's retried on the next sync.
-      if (artPath != null) await _db.updateArtPath(folderPath, artPath);
+      if (folderArtPath != null) {
+        await _db.updateArtPath(folderPath, folderArtPath);
+      }
       return;
     }
 
@@ -218,7 +223,12 @@ class LibraryService {
         meta.albumArtist?.isNotEmpty == true ? meta.albumArtist : null;
     final albumTitle =
         meta.albumTitle?.isNotEmpty == true ? meta.albumTitle : null;
-    artPath ??= await _metadata.extractArtwork(firstTrackPath);
+    final artPath = await _resolveArtwork(folderPath,
+        knownArtPath: folderArtPath,
+        albumArtist: albumArtist,
+        albumTitle: albumTitle,
+        downloadedFirstTrackPath: firstTrackPath,
+        resolveFirstTrackArtist: () async => meta.artist);
     await _bookmarks.evictFile(firstTrackPath); // best-effort
 
     final name = (albumArtist != null && albumTitle != null)
@@ -233,6 +243,106 @@ class LibraryService {
     // otherwise it would show real metadata while its siblings still show
     // filenames.
     await _db.markFirstTrackScanned(folderPath);
+  }
+
+  // A single, on-demand attempt to resolve artwork for a release that still
+  // has none — triggered when the release screen opens on one, not run
+  // automatically in the background or retried on every sync. Deliberately
+  // does not re-download the first track to retry embedded-art extraction,
+  // since a failure there is deterministic, not transient — see
+  // _resolveArtwork. Returns the resolved path (already persisted to the
+  // DB), or null if nothing new was found.
+  Future<String?> retryArtwork(String folderPath,
+      {required String? albumArtist, required String? albumTitle}) async {
+    final artPath = await _resolveArtwork(folderPath,
+        albumArtist: albumArtist,
+        albumTitle: albumTitle,
+        resolveFirstTrackArtist: () => _firstTrackArtist(folderPath));
+    if (artPath != null) await _db.updateArtPath(folderPath, artPath);
+    return artPath;
+  }
+
+  // Re-attempts artwork for every currently-known, fully-scanned release
+  // that still has none (or whose stored art_path file has gone missing on
+  // disk). Only ever invoked from an explicit refresh — never automatically
+  // — so a release with no findable artwork doesn't get hit repeatedly
+  // without the user asking. Processed one at a time; MusicBrainz calls are
+  // serialized by MusicBrainzService itself, so no extra throttling is
+  // needed here. A release still going through its first-track scan this
+  // same sync is skipped — it already gets its own MusicBrainz attempt via
+  // the unresolved-release retry path, so retrying it again here would
+  // just double up.
+  //
+  // onArtworkResolved fires only when a release's artwork was actually
+  // found (so a caller can invalidate an image cache entry for that exact
+  // path); onProgress fires for every release attempted, found or not (so
+  // a caller can refresh the UI as the sweep progresses).
+  Future<void> retryMissingArtwork({
+    void Function(String artPath)? onArtworkResolved,
+    void Function()? onProgress,
+  }) async {
+    final rows = await _db.loadAllReleases();
+    for (final row in rows) {
+      if ((row['first_track_scanned'] as int) != 1) continue;
+      final artPath = row['art_path'] as String?;
+      if (artPath != null && File(artPath).existsSync()) continue;
+      final resolved = await retryArtwork(row['folder_path'] as String,
+          albumArtist: row['album_artist'] as String?,
+          albumTitle: row['album_title'] as String?);
+      if (resolved != null) onArtworkResolved?.call(resolved);
+      onProgress?.call();
+    }
+  }
+
+  // The single place artwork is resolved from every source, in priority
+  // order: a folder image file, then (only when the first track has
+  // already been downloaded this call, i.e. during a scan) its embedded
+  // artwork, then a MusicBrainz lookup — falling back to the track's own
+  // artist tag when no album artist is known, since ripped CDs often tag
+  // the track artist (TPE1) but not the album artist (TPE2). Every caller
+  // that fetches artwork goes through this, so a source or fallback added
+  // here automatically covers all of them — this consolidation exists
+  // because the artist-tag fallback was previously duplicated per call
+  // site and silently dropped from one of them during a rewrite.
+  //
+  // resolveFirstTrackArtist is lazy (only awaited if actually needed, i.e.
+  // no art found yet and no album artist known) since retryArtwork's
+  // implementation has to download the first track solely to read it.
+  Future<String?> _resolveArtwork(
+    String folderPath, {
+    String? knownArtPath,
+    required String? albumArtist,
+    required String? albumTitle,
+    required Future<String?> Function() resolveFirstTrackArtist,
+    String? downloadedFirstTrackPath,
+  }) async {
+    var artPath = knownArtPath ?? await _findArtFile(folderPath);
+    if (artPath == null && downloadedFirstTrackPath != null) {
+      artPath = await _metadata.extractArtwork(downloadedFirstTrackPath);
+    }
+    if (artPath == null) {
+      final searchArtist = albumArtist ?? await resolveFirstTrackArtist();
+      artPath = await _musicBrainz.fetchArtwork(
+          albumArtist: searchArtist,
+          albumTitle: albumTitle,
+          folderPath: folderPath);
+    }
+    return artPath;
+  }
+
+  // Downloads the release's first track just long enough to read its own
+  // artist tag, evicting it again afterwards. Only called (lazily) from
+  // _resolveArtwork's retryArtwork path, as a last resort when the release
+  // has no album-artist tag to search MusicBrainz with.
+  Future<String?> _firstTrackArtist(String folderPath) async {
+    final tracks = await _db.loadTracks(folderPath);
+    if (tracks.isEmpty) return null;
+    final firstTrackPath = tracks.first['file_path'] as String;
+    await _bookmarks.downloadFile(firstTrackPath);
+    if (!await _awaitFileAvailable(firstTrackPath)) return null;
+    final meta = await _metadata.readMetadata(firstTrackPath);
+    await _bookmarks.evictFile(firstTrackPath); // best-effort
+    return meta.artist?.isNotEmpty == true ? meta.artist : null;
   }
 
   // Lists a folder's audio files purely from their filenames — no metadata

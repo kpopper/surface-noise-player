@@ -17,6 +17,12 @@ Release makeRelease(String name,
     );
 
 void main() {
+  // retryArtworkIfMissing touches PaintingBinding.instance (to evict a
+  // stale cached image at the resolved path) — plain test() doesn't set up
+  // Flutter's bindings the way testWidgets() does, so it must be done
+  // explicitly here.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late FakeLibraryService fakeService;
   late FakeBookmarkService fakeBookmarks;
   late LibraryProvider provider;
@@ -129,6 +135,12 @@ void main() {
       expect(provider.rootPath, '/bookmarked');
       expect(fakeService.syncedRoots, ['/bookmarked']);
     });
+
+    test('does not retry missing artwork', () async {
+      fakeService.rootToReturn = '/music';
+      await provider.init();
+      expect(fakeService.retryMissingArtworkCallCount, 0);
+    });
   });
 
   group('refresh', () {
@@ -152,6 +164,15 @@ void main() {
       expect(fakeService.syncedRoots, isEmpty);
       expect(fakeService.loadLibraryCallCount, 0);
     });
+
+    test('also retries missing artwork', () async {
+      fakeService.rootToReturn = '/music';
+      await provider.init();
+
+      await provider.refresh();
+
+      expect(fakeService.retryMissingArtworkCallCount, 1);
+    });
   });
 
   group('pickFolder', () {
@@ -167,6 +188,12 @@ void main() {
       expect(provider.rootPath, '/new-music');
       expect(provider.allReleases.map((r) => r.name), ['New Album']);
       expect(fakeService.syncedRoots, ['/music', '/new-music']);
+    });
+
+    test('does not retry missing artwork', () async {
+      fakeService.rootToReturn = '/music';
+      await provider.pickFolder();
+      expect(fakeService.retryMissingArtworkCallCount, 0);
     });
 
     test('clears active tag filters', () async {
@@ -567,6 +594,88 @@ void main() {
             path: '/music/Album/missing.mp3', title: 'New', trackNumber: 1),
       );
       expect(provider.allReleases.first.tracks, isEmpty);
+    });
+  });
+
+  group('retryArtworkIfMissing', () {
+    test('does not call the service when the release already has artwork',
+        () async {
+      final release = makeRelease('Album');
+      final withArt = Release(
+        folderPath: release.folderPath,
+        name: release.name,
+        tracks: release.tracks,
+        tags: release.tags,
+        artPath: '/music/Album/cover.jpg',
+      );
+
+      await provider.retryArtworkIfMissing(withArt);
+
+      expect(fakeService.artRetryCallCount, 0);
+    });
+
+    test(
+        'calls the service and updates the in-memory artPath when art is found',
+        () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        Release(
+          folderPath: '/music/Album',
+          name: 'Album',
+          tracks: const [],
+          tags: const [],
+          albumArtist: 'The Artist',
+          albumTitle: 'The Title',
+        ),
+      ];
+      await provider.init();
+      fakeService.artRetryResult = '/music/Album/cover.jpg';
+
+      await provider.retryArtworkIfMissing(provider.allReleases.first);
+
+      expect(fakeService.lastArtRetryFolderPath, '/music/Album');
+      expect(fakeService.lastArtRetryAlbumArtist, 'The Artist');
+      expect(fakeService.lastArtRetryAlbumTitle, 'The Title');
+      expect(provider.allReleases.first.artPath, '/music/Album/cover.jpg');
+    });
+
+    test('notifies listeners when art is found', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        Release(
+            folderPath: '/music/Album',
+            name: 'Album',
+            tracks: const [],
+            tags: const []),
+      ];
+      await provider.init();
+      fakeService.artRetryResult = '/music/Album/cover.jpg';
+
+      int notifyCount = 0;
+      provider.addListener(() => notifyCount++);
+      await provider.retryArtworkIfMissing(provider.allReleases.first);
+
+      expect(notifyCount, 1);
+    });
+
+    test('makes no in-memory change when the service finds nothing', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        Release(
+            folderPath: '/music/Album',
+            name: 'Album',
+            tracks: const [],
+            tags: const []),
+      ];
+      await provider.init();
+      fakeService.artRetryResult = null;
+
+      int notifyCount = 0;
+      provider.addListener(() => notifyCount++);
+      await provider.retryArtworkIfMissing(provider.allReleases.first);
+
+      expect(notifyCount, 0);
+      expect(provider.allReleases.first.artPath, isNull);
     });
   });
 

@@ -4,6 +4,10 @@
 
 - [ ] ZIP import — auto-scan iCloud Drive Downloads for ZIPs containing audio files; extract into library with ID3-derived `Artist - Album` folder names; archive source ZIP to `_zips/`; auto-select the new release
 - [ ] Add swipe gestures to navigate from mini player to Now playing and to minimise Now Playing window
+- [ ] Improve "Play all" button functionality - maybe not needed: just play first track
+- [ ] Tweak design of tag lozenges: more pronounced text (bold?), use variant with coloured background in library view tag filtering
+- [ ] Notify user once if a release cannot be downloaded when attempting to play
+- [ ] App needs a proper icon
 
 ## Completed
 
@@ -20,3 +24,5 @@
 - [x] Album art — display cover art from a `cover.jpg`/`folder.jpg` (or any image file) in the release folder, or extract embedded artwork from audio metadata
 - [x] MusicBrainz artwork — when no local art is found, automatically fetch 1200px cover art from MusicBrainz Cover Art Archive and save as `cover.jpg`; prefers earliest release date
 - [x] Fix MusicBrainz artwork retrieval failing for some albums — fetch cover art at the release-group level instead of a single specific edition, since not every edition has a scan in the Cover Art Archive (was causing Tortoise's "Millions Now Living Will Never Die" and Geese's "Getting Killed" to show no cover)
+- [x] Restore MusicBrainz artwork lookup, lost in the library redesign rewrite — fixed a wrong-album match (missing `AND` between query clauses let same-artist/different-album results win the earliest-date tiebreak), a stale Flutter image-cache entry masking successfully-resolved artwork, and a long-lived `http.Client` going stale after sitting idle; added a single on-demand retry when opening a release with no artwork, and a track-artist-tag fallback for releases with no album-artist tag (common on ripped CDs)
+- [x] Bulk artwork retry from the refresh button — sweeps every fully-scanned release still missing artwork, in addition to the regular directory sync, rate-limited to the MusicBrainz API's ~1 req/sec so it's safe regardless of how many releases need retrying
