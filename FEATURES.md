@@ -4,10 +4,10 @@
 
 - [ ] ZIP import — auto-scan iCloud Drive Downloads for ZIPs containing audio files; extract into library with ID3-derived `Artist - Album` folder names; archive source ZIP to `_zips/`; auto-select the new release
 - [ ] Add swipe gestures to navigate from mini player to Now playing and to minimise Now Playing window
-- [ ] Library redesign — replacing the select/deselect model with "the library is everything on disk". Done so far: directory scan/sync data layer (releases added/removed automatically, first-track-only scan for album info, management screen removed), and per-track download-on-play (request-on-tap, buffering spinner replacing the play/pause button, whole-release download requested on every play action, metadata read and persisted the first time a track is confirmed available, release screen now live from the database). Still to come: the main library screen itself — artist/album filter, live-reactive cards, all releases tappable regardless of download status (the `isAvailable`-based greying-out is now dead code, not yet removed)
 
 ## Completed
 
+- [x] Library redesign — replaced the select/deselect model with "the library is everything on disk": directory scan/sync data layer (releases added/removed automatically, first-track-only scan for album info, old management screen removed), per-track download-on-play (request-on-tap, buffering spinner, whole-release download requested on every play action, metadata read and persisted the first time a track is confirmed available, release screen live from the database), and the main library screen (name search field with tap/scroll-to-dismiss keyboard, a toggle between recency and alphabetical sort order, all releases tappable regardless of download status, dead `isAvailable` greying-out removed)
 - [x] Library management improvements — search field to filter the folder list by name; already-selected albums shown in bold so new/unselected ones stand out
 - [x] Skip buttons in player should relate to the tracks in the release, not the played tracks (e.g. if tapping on track 4, skip back should go to track 3, even if it hasn't been played)
 - [x] Increase the size of the mini player to make it easier to tap — larger art thumbnail, text, and control icons, with extra bottom padding

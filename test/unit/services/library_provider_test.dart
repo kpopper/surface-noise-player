@@ -176,6 +176,13 @@ void main() {
       expect(provider.activeTags, isEmpty);
     });
 
+    test('clears the search query', () async {
+      provider.setSearchQuery('jazz');
+      fakeService.rootToReturn = '/new-music';
+      await provider.pickFolder();
+      expect(provider.searchQuery, isEmpty);
+    });
+
     test('does nothing when pickLibraryFolder returns null', () async {
       fakeService.rootToReturn = null;
       await provider.pickFolder();
@@ -216,6 +223,65 @@ void main() {
       provider.toggleTag('jazz');
       provider.toggleTag('rock');
       expect(provider.releases, isEmpty);
+    });
+  });
+
+  group('releases (search filtering)', () {
+    setUp(() async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        makeRelease('The Beatles - Abbey Road'),
+        makeRelease('Pink Floyd - The Wall'),
+      ];
+      await provider.init();
+    });
+
+    test('returns all releases when the search query is empty', () {
+      expect(provider.releases.length, 2);
+    });
+
+    test('filters by a substring match against the release name', () {
+      provider.setSearchQuery('beatles');
+      expect(provider.releases.length, 1);
+      expect(provider.releases.first.name, 'The Beatles - Abbey Road');
+    });
+
+    test('matches case-insensitively', () {
+      provider.setSearchQuery('PINK FLOYD');
+      expect(provider.releases.length, 1);
+      expect(provider.releases.first.name, 'Pink Floyd - The Wall');
+    });
+
+    test('combines with an active tag filter (AND logic)', () async {
+      fakeService.releasesToReturn = [
+        makeRelease('The Beatles - Abbey Road', tags: ['rock']),
+        makeRelease('The Beatles - Revolver', tags: ['pop']),
+      ];
+      await provider.refresh();
+
+      provider.toggleTag('rock');
+      provider.setSearchQuery('beatles');
+      expect(provider.releases.length, 1);
+      expect(provider.releases.first.name, 'The Beatles - Abbey Road');
+    });
+
+    test('returns empty when no release matches the search query', () {
+      provider.setSearchQuery('nonexistent');
+      expect(provider.releases, isEmpty);
+    });
+  });
+
+  group('setSearchQuery', () {
+    test('updates searchQuery', () {
+      provider.setSearchQuery('jazz');
+      expect(provider.searchQuery, 'jazz');
+    });
+
+    test('notifies listeners', () {
+      int notifyCount = 0;
+      provider.addListener(() => notifyCount++);
+      provider.setSearchQuery('jazz');
+      expect(notifyCount, 1);
     });
   });
 
@@ -357,6 +423,62 @@ void main() {
       await provider.recordPlay('/music/A');
       expect(provider.releases.first.name, 'A');
       expect(fakeService.lastRecordedPlayPath, '/music/A');
+    });
+  });
+
+  group('sort mode toggle', () {
+    // Apple is older but alphabetically first; Zebra is more recent but
+    // alphabetically last — recency and alphabetical order disagree, so
+    // these tests can tell the two modes apart.
+    setUp(() async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        makeRelease('Apple', lastActivityAt: DateTime(2025, 1, 1)),
+        makeRelease('Zebra', lastActivityAt: DateTime(2025, 6, 1)),
+      ];
+      await provider.init();
+    });
+
+    test('defaults to recency', () {
+      expect(provider.sortMode, LibrarySortMode.recency);
+      expect(provider.releases.first.name, 'Zebra'); // most recent activity
+    });
+
+    test('toggling switches to ascending alphabetical order', () {
+      provider.toggleSortMode();
+      expect(provider.sortMode, LibrarySortMode.alphabetical);
+      expect(provider.releases.map((r) => r.name).toList(), ['Apple', 'Zebra']);
+    });
+
+    test('toggling twice returns to recency order', () {
+      provider.toggleSortMode();
+      provider.toggleSortMode();
+      expect(provider.sortMode, LibrarySortMode.recency);
+      expect(provider.releases.first.name, 'Zebra');
+    });
+
+    test('matches case-insensitively when sorting alphabetically', () async {
+      fakeService.releasesToReturn = [
+        makeRelease('banana'),
+        makeRelease('Apple'),
+      ];
+      await provider.refresh();
+      provider.toggleSortMode();
+      expect(
+          provider.releases.map((r) => r.name).toList(), ['Apple', 'banana']);
+    });
+
+    test('recordPlay does not reorder while sorted alphabetically', () async {
+      provider.toggleSortMode();
+      await provider.recordPlay('/music/Zebra');
+      expect(provider.releases.map((r) => r.name).toList(), ['Apple', 'Zebra']);
+    });
+
+    test('notifies listeners', () {
+      int notifyCount = 0;
+      provider.addListener(() => notifyCount++);
+      provider.toggleSortMode();
+      expect(notifyCount, 1);
     });
   });
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/library_provider.dart';
+import '../widgets/library_search_field.dart';
 import '../widgets/release_card.dart';
 import '../widgets/tag_filter_bar.dart';
 import 'release_screen.dart';
@@ -53,7 +54,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
             ],
           ),
-          body: _buildBody(context, lib),
+          body: GestureDetector(
+            // Tapping anywhere outside an interactive control (release cards
+            // and the search field itself both handle their own taps first,
+            // so this only fires on genuinely "away" taps) dismisses the
+            // keyboard by moving focus off the search field.
+            onTap: () => FocusScope.of(context).unfocus(),
+            behavior: HitTestBehavior.opaque,
+            child: _buildBody(context, lib),
+          ),
         );
       },
     );
@@ -86,7 +95,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     // in the background (the app bar spinner is the sync indicator) — only
     // fall back to a full-screen spinner when there's genuinely nothing to
     // show yet, e.g. the very first sync after picking a new folder.
-    if (releases.isEmpty && lib.activeTags.isEmpty) {
+    if (releases.isEmpty && lib.activeTags.isEmpty && lib.searchQuery.isEmpty) {
       if (lib.loading) {
         return const Center(child: CircularProgressIndicator());
       }
@@ -116,7 +125,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           const Expanded(
             child: Center(
               child: Text(
-                'No releases match the selected tags',
+                'No releases match the current filters',
                 style: TextStyle(color: Colors.grey),
               ),
             ),
@@ -124,26 +133,40 @@ class _LibraryScreenState extends State<LibraryScreen> {
         else
           Expanded(
             child: ListView.builder(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               itemCount: releases.length,
               itemBuilder: (context, i) {
                 final release = releases[i];
-                return Opacity(
-                  opacity: release.isAvailable ? 1.0 : 0.4,
-                  child: ReleaseCard(
-                    release: release,
-                    onTap: release.isAvailable
-                        ? () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ReleaseScreen(release: release),
-                              ),
-                            )
-                        : null,
+                return ReleaseCard(
+                  release: release,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ReleaseScreen(release: release),
+                    ),
                   ),
                 );
               },
             ),
           ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          child: Row(
+            children: [
+              const Expanded(child: LibrarySearchField()),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: Icon(lib.sortMode == LibrarySortMode.recency
+                    ? Icons.unfold_more
+                    : Icons.sort_by_alpha),
+                tooltip: lib.sortMode == LibrarySortMode.recency
+                    ? 'Sorted by recent activity — tap to sort alphabetically'
+                    : 'Sorted alphabetically — tap to sort by recent activity',
+                onPressed: lib.toggleSortMode,
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

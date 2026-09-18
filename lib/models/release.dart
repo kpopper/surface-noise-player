@@ -26,7 +26,6 @@ class Release {
   final String? albumTitle;
   final String? albumArtist;
   final DateTime? lastActivityAt;
-  final bool isAvailable;
 
   const Release({
     required this.folderPath,
@@ -37,12 +36,9 @@ class Release {
     this.albumTitle,
     this.albumArtist,
     this.lastActivityAt,
-    this.isAvailable = true,
   });
 
-  Release copyWith(
-          {List<String>? tags, DateTime? lastActivityAt, bool? isAvailable}) =>
-      Release(
+  Release copyWith({List<String>? tags, DateTime? lastActivityAt}) => Release(
         folderPath: folderPath,
         name: name,
         tracks: tracks,
@@ -51,6 +47,5 @@ class Release {
         albumTitle: albumTitle,
         albumArtist: albumArtist,
         lastActivityAt: lastActivityAt ?? this.lastActivityAt,
-        isAvailable: isAvailable ?? this.isAvailable,
       );
 }

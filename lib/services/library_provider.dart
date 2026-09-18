@@ -3,6 +3,8 @@ import '../models/release.dart';
 import 'bookmark_service.dart';
 import 'library_service.dart';
 
+enum LibrarySortMode { recency, alphabetical }
+
 class LibraryProvider extends ChangeNotifier {
   final LibraryService _svc;
   final BookmarkService _bookmarks;
@@ -12,18 +14,29 @@ class LibraryProvider extends ChangeNotifier {
 
   List<Release> _releases = [];
   final List<String> _activeTags = [];
+  String _searchQuery = '';
+  LibrarySortMode _sortMode = LibrarySortMode.recency;
   bool loading = false;
   String? rootPath;
 
   List<Release> get releases {
-    if (_activeTags.isEmpty) return _releases;
-    return _releases
-        .where((r) => _activeTags.every((t) => r.tags.contains(t)))
-        .toList();
+    var result = _releases;
+    if (_activeTags.isNotEmpty) {
+      result = result
+          .where((r) => _activeTags.every((t) => r.tags.contains(t)))
+          .toList();
+    }
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      result = result.where((r) => r.name.toLowerCase().contains(q)).toList();
+    }
+    return result;
   }
 
   List<Release> get allReleases => _releases;
   List<String> get activeTags => List.unmodifiable(_activeTags);
+  String get searchQuery => _searchQuery;
+  LibrarySortMode get sortMode => _sortMode;
 
   Future<void> init() async {
     final bookmarkedPath = await _bookmarks.resolveBookmark();
@@ -46,6 +59,7 @@ class LibraryProvider extends ChangeNotifier {
       // visible here — unlike init()/refresh() below.
       _releases = [];
       _activeTags.clear();
+      _searchQuery = '';
       await _syncInBackground(rootPath!);
     }
   }
@@ -86,7 +100,7 @@ class LibraryProvider extends ChangeNotifier {
     do {
       _reloadPending = false;
       _releases = await _svc.loadLibrary();
-      _sortByActivity(_releases);
+      _applySort(_releases);
       notifyListeners();
     } while (_reloadPending);
     _reloadInFlight = false;
@@ -98,8 +112,29 @@ class LibraryProvider extends ChangeNotifier {
     if (index >= 0) {
       _releases[index] =
           _releases[index].copyWith(lastActivityAt: DateTime.now());
-      _sortByActivity(_releases);
+      // Re-sorting is a no-op in alphabetical mode (it doesn't depend on
+      // activity), but harmless to always call — keeps this one call site
+      // correct regardless of which mode is currently active.
+      _applySort(_releases);
       notifyListeners();
+    }
+  }
+
+  void toggleSortMode() {
+    _sortMode = _sortMode == LibrarySortMode.recency
+        ? LibrarySortMode.alphabetical
+        : LibrarySortMode.recency;
+    _applySort(_releases);
+    notifyListeners();
+  }
+
+  void _applySort(List<Release> releases) {
+    switch (_sortMode) {
+      case LibrarySortMode.recency:
+        _sortByActivity(releases);
+      case LibrarySortMode.alphabetical:
+        releases.sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     }
   }
 
@@ -127,6 +162,11 @@ class LibraryProvider extends ChangeNotifier {
 
   void clearTagFilter() {
     _activeTags.clear();
+    notifyListeners();
+  }
+
+  void setSearchQuery(String value) {
+    _searchQuery = value;
     notifyListeners();
   }
 

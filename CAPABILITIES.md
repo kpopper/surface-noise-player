@@ -26,9 +26,12 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Library sorting
 
-- Releases are sorted by most recent activity (played or added), newest first
+- Releases are sorted by most recent activity (played or added), newest first, by default
 - A release's activity timestamp is set when it is first discovered and updated when it is played
-- Releases with no recorded activity are sorted alphabetically at the end of the list
+- Releases with no recorded activity are sorted alphabetically at the end of the list, when sorted by activity
+- A toggle button next to the search field switches sorting between recency order (the default) and ascending alphabetical order by release name; tapping it again switches back
+- Alphabetical order ignores activity timestamps entirely; switching back to recency order re-applies most-recent-first, including any activity recorded while sorted alphabetically
+- The chosen sort order applies to the full release list, independent of any active tag or search filters
 
 ## Tags
 
@@ -119,7 +122,11 @@ writing a feature; remove or update it when behaviour changes.
 - When no root folder has been selected, an empty-state prompt is shown with a button to choose a library folder
 - When a root folder is selected but the library is empty (no valid subfolders found), an empty-state message is shown with a button to choose a different library folder
 - When releases exist, one card is shown per release
-- When an active tag filter has no matching releases, a "no releases match" message is shown
+- A search field at the bottom of the screen filters the release list by matching the release name (which includes album artist and title when known) as you type, case-insensitively
+- The search field and tag filters combine with AND logic, same as multiple active tags
+- Scrolling the release list, or tapping anywhere else on the screen, dismisses the keyboard by moving focus away from the search field
+- When the active tag filter and/or search have no matching releases, a "no releases match" message is shown
+- Every release card is tappable regardless of local download status — opening one goes straight to the release screen, which handles downloading tracks on demand
 - The app bar has a button to choose a different library folder; it is disabled while a sync is in progress
 - The app bar has a refresh button; tapping it re-syncs the directory with the database (see Library scanning); activity timestamps are not changed by a refresh
 - While a sync is in progress (on launch or from the refresh button), the refresh button is replaced by a spinner in its place

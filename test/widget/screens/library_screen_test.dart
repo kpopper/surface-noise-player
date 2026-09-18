@@ -5,16 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/screens/library_screen.dart';
+import 'package:surface_noise_player/screens/release_screen.dart';
 import 'package:surface_noise_player/services/library_provider.dart';
 import '../../helpers/fake_bookmark_service.dart';
 import '../../helpers/fake_library_service.dart';
 
-Release makeRelease(String name, {bool isAvailable = true}) => Release(
+Release makeRelease(String name, {DateTime? lastActivityAt}) => Release(
       folderPath: '/music/$name',
       name: name,
       tracks: const [],
       tags: const [],
-      isAvailable: isAvailable,
+      lastActivityAt: lastActivityAt,
     );
 
 Widget wrapWithProvider(LibraryProvider provider) =>
@@ -86,23 +87,16 @@ void main() {
       expect(find.byIcon(Icons.refresh), findsOneWidget);
     });
 
-    testWidgets('unavailable release is shown but non-interactive',
+    testWidgets(
+        'tapping a release card opens the release screen regardless of download status',
         (tester) async {
-      final fake = FakeLibraryService()
-        ..rootToReturn = '/music'
-        ..releasesToReturn = [
-          makeRelease('Unavailable Album', isAvailable: false)
-        ];
-      final fakeBookmarks = FakeBookmarkService()..downloadResult = false;
-      final provider = LibraryProvider(fake, fakeBookmarks);
-      await tester.pumpWidget(wrapWithProvider(provider));
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: [makeRelease('Album A')]);
+
+      await tester.tap(find.text('Album A'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Unavailable Album'), findsOneWidget);
-      await tester.tap(find.text('Unavailable Album'));
-      await tester.pumpAndSettle();
-      expect(find.text('Surface Noise'),
-          findsOneWidget); // still on library screen
+      expect(find.byType(ReleaseScreen), findsOneWidget);
     });
   });
 
@@ -174,6 +168,140 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('No releases match'), findsOneWidget);
+    });
+  });
+
+  group('search filtering', () {
+    testWidgets('typing in the search field filters releases by name',
+        (tester) async {
+      await pumpLibraryScreen(tester, savedRoot: '/music', releases: [
+        makeRelease('Aardvark'),
+        makeRelease('Bumblebee'),
+      ]);
+
+      expect(find.text('Aardvark'), findsOneWidget);
+      expect(find.text('Bumblebee'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'bumble');
+      await tester.pump();
+
+      expect(find.text('Aardvark'), findsNothing);
+      expect(find.text('Bumblebee'), findsOneWidget);
+    });
+
+    testWidgets('clearing the search field restores the full list',
+        (tester) async {
+      await pumpLibraryScreen(tester, savedRoot: '/music', releases: [
+        makeRelease('Aardvark'),
+        makeRelease('Bumblebee'),
+      ]);
+
+      await tester.enterText(find.byType(TextField), 'bumble');
+      await tester.pump();
+      expect(find.text('Aardvark'), findsNothing);
+
+      await tester.tap(find.byIcon(Icons.clear));
+      await tester.pump();
+
+      expect(find.text('Aardvark'), findsOneWidget);
+      expect(find.text('Bumblebee'), findsOneWidget);
+    });
+
+    testWidgets('search with no matches shows "No releases match"',
+        (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: [makeRelease('Aardvark')]);
+
+      await tester.enterText(find.byType(TextField), 'zzz');
+      await tester.pump();
+
+      expect(find.textContaining('No releases match'), findsOneWidget);
+    });
+  });
+
+  group('keyboard dismissal', () {
+    testWidgets('tapping outside the search field dismisses the keyboard',
+        (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: [makeRelease('Album A')]);
+
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      // Tap blank space within the list's viewport, well below the single
+      // short release card, rather than on any interactive widget.
+      final listBottomLeft = tester.getBottomLeft(find.byType(ListView));
+      await tester.tapAt(listBottomLeft + const Offset(50, -20));
+      await tester.pump();
+
+      expect(tester.testTextInput.isVisible, isFalse);
+    });
+
+    testWidgets('scrolling the release list dismisses the keyboard',
+        (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music',
+          releases: [for (var i = 0; i < 20; i++) makeRelease('Album $i')]);
+
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pump();
+
+      expect(tester.testTextInput.isVisible, isFalse);
+    });
+  });
+
+  group('sort toggle', () {
+    // Apple is older but alphabetically first; Zebra is more recent but
+    // alphabetically last — recency and alphabetical order disagree, so
+    // these tests can tell the two modes apart.
+    List<Release> testReleases() => [
+          makeRelease('Apple', lastActivityAt: DateTime(2025, 1, 1)),
+          makeRelease('Zebra', lastActivityAt: DateTime(2025, 6, 1)),
+        ];
+
+    List<String?> visibleNames(WidgetTester tester) => tester
+        .widgetList<ListTile>(find.byType(ListTile))
+        .map((t) => (t.title as Text).data)
+        .toList();
+
+    testWidgets('defaults to recency order with a recency icon shown',
+        (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: testReleases());
+
+      expect(find.byIcon(Icons.unfold_more), findsOneWidget);
+      expect(visibleNames(tester), ['Zebra', 'Apple']);
+    });
+
+    testWidgets('tapping the toggle switches to alphabetical order',
+        (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: testReleases());
+
+      await tester.tap(find.byIcon(Icons.unfold_more));
+      await tester.pump();
+
+      expect(find.byIcon(Icons.sort_by_alpha), findsOneWidget);
+      expect(visibleNames(tester), ['Apple', 'Zebra']);
+    });
+
+    testWidgets('tapping the toggle twice returns to recency order',
+        (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: testReleases());
+
+      await tester.tap(find.byIcon(Icons.unfold_more));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.sort_by_alpha));
+      await tester.pump();
+
+      expect(find.byIcon(Icons.unfold_more), findsOneWidget);
+      expect(visibleNames(tester), ['Zebra', 'Apple']);
     });
   });
 }
