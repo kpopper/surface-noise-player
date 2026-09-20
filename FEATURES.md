@@ -8,6 +8,10 @@
 - [ ] Tweak design of tag lozenges: more pronounced text (bold?), use variant with coloured background in library view tag filtering
 - [ ] Notify user once if a release cannot be downloaded when attempting to play
 - [ ] App needs a proper icon
+- [ ] Fix native forward and back track on iOS
+- [ ] Flash of empty library screen when first opens
+- [ ] Allow a release's metadata to be rescanned
+- [ ] Don't evict first track after scanning metadata if it was already downloaded
 
 ## Completed
 
@@ -26,3 +30,4 @@
 - [x] Fix MusicBrainz artwork retrieval failing for some albums — fetch cover art at the release-group level instead of a single specific edition, since not every edition has a scan in the Cover Art Archive (was causing Tortoise's "Millions Now Living Will Never Die" and Geese's "Getting Killed" to show no cover)
 - [x] Restore MusicBrainz artwork lookup, lost in the library redesign rewrite — fixed a wrong-album match (missing `AND` between query clauses let same-artist/different-album results win the earliest-date tiebreak), a stale Flutter image-cache entry masking successfully-resolved artwork, and a long-lived `http.Client` going stale after sitting idle; added a single on-demand retry when opening a release with no artwork, and a track-artist-tag fallback for releases with no album-artist tag (common on ripped CDs)
 - [x] Bulk artwork retry from the refresh button — sweeps every fully-scanned release still missing artwork, in addition to the regular directory sync, rate-limited to the MusicBrainz API's ~1 req/sec so it's safe regardless of how many releases need retrying
+- [x] Artwork retry reliability fixes — retry paths (on-demand and bulk) now check embedded artwork before MusicBrainz, so releases with artwork that MusicBrainz can't find still resolve; a release's own failure no longer aborts the rest of a bulk sweep; a still-unresolved release's repeated re-scan no longer regresses an already-found `art_path` back to null; embedded artwork is now persisted into the release's own folder like a MusicBrainz download, instead of the app's own internal storage, so it survives an app reinstall

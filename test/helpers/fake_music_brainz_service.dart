@@ -6,6 +6,13 @@ class FakeMusicBrainzService implements MusicBrainzService {
   String? lastFetchedArtist;
   String? lastFetchedTitle;
 
+  // Folder paths to simulate an unexpected failure for, e.g. to test that
+  // one release's failure doesn't stop a bulk sweep from attempting the
+  // rest — real callers never throw (MusicBrainzService swallows its own
+  // failures), but a caller like retryMissingArtwork should still be
+  // resilient to a failure from anywhere in the resolution chain.
+  Set<String> throwForFolderPaths = {};
+
   @override
   Future<String?> fetchArtwork({
     required String? albumArtist,
@@ -15,6 +22,9 @@ class FakeMusicBrainzService implements MusicBrainzService {
     wasCalled = true;
     lastFetchedArtist = albumArtist;
     lastFetchedTitle = albumTitle;
+    if (throwForFolderPaths.contains(folderPath)) {
+      throw Exception('simulated failure for $folderPath');
+    }
     return artPathToReturn;
   }
 }
