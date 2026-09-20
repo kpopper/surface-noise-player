@@ -219,11 +219,18 @@ void main() {
           'falls back to embedded artwork only after the first track becomes available',
           () async {
         final albumDir = await createAlbum('Album', ['01.mp3']);
-        fakeMetadata.artworkPaths['${albumDir.path}/01.mp3'] =
-            '/tmp/extracted.jpg';
+        // Outside the release's own folder — a file living there would be
+        // picked up by _findArtFile as if it were a real folder image,
+        // short-circuiting before embedded-artwork extraction is even
+        // attempted.
+        final extractedPath = '${tempRoot.path}/extracted.jpg';
+        await File(extractedPath).writeAsBytes([1, 2, 3]);
+        fakeMetadata.artworkPaths['${albumDir.path}/01.mp3'] = extractedPath;
         await service.syncLibrary(tempRoot.path);
         final row = await dbService.loadRelease(albumDir.path);
-        expect(row!['art_path'], '/tmp/extracted.jpg');
+        // Copied into the release's own folder, not left at wherever it was
+        // extracted to — see _persistExtractedArtwork.
+        expect(row!['art_path'], '${albumDir.path}/cover.jpg');
       });
 
       test(
@@ -400,6 +407,38 @@ void main() {
         expect(row!['first_track_scanned'], 0);
         expect(row['name'], 'Album'); // still folder-name fallback
       });
+
+      test(
+          'does not erase artwork a manual retry already found while still '
+          'unresolved', () async {
+        // Regression: a release can stay unresolved indefinitely for a
+        // reason unrelated to artwork (its first-track download keeps
+        // timing out), which meant every sync re-ran _resolveFirstTrack and
+        // unconditionally overwrote art_path with whatever that attempt
+        // found — including null — silently erasing artwork a manual
+        // on-demand retry had already found and persisted independently.
+        final albumDir = await createAlbum('Album', ['01.mp3']);
+        fakeBookmarks.unavailablePaths = {'${albumDir.path}/01.mp3'};
+        await service.syncLibrary(tempRoot.path); // times out, stays unresolved
+
+        fakeBookmarks.unavailablePaths = {}; // retryArtwork's download works
+        fakeMusicBrainz.artPathToReturn = '${albumDir.path}/cover.jpg';
+        await service.retryArtwork(albumDir.path,
+            albumArtist: 'Artist', albumTitle: 'Title');
+        expect((await dbService.loadRelease(albumDir.path))!['art_path'],
+            '${albumDir.path}/cover.jpg');
+
+        // The next sync retries the still-unresolved release again; this
+        // time nothing new is found at all (no folder image, no embedded
+        // artwork, and — simulating a real "not found" — no MusicBrainz
+        // match either).
+        fakeMusicBrainz.artPathToReturn = null;
+        await service.syncLibrary(tempRoot.path);
+
+        final row = await dbService.loadRelease(albumDir.path);
+        expect(row!['first_track_scanned'], 1);
+        expect(row['art_path'], '${albumDir.path}/cover.jpg');
+      });
     });
 
     group('combined', () {
@@ -567,8 +606,8 @@ void main() {
     });
 
     test(
-        'does not re-download the first track when an album artist is already known',
-        () async {
+        'downloads the first track to check its embedded artwork even when '
+        'an album artist is already known', () async {
       await dbService.saveTracks(tempDir.path, [
         Track(
             path: '${tempDir.path}/01.mp3', title: 'Track One', trackNumber: 1),
@@ -577,7 +616,38 @@ void main() {
       await service.retryArtwork(tempDir.path,
           albumArtist: 'Artist', albumTitle: 'Title');
 
-      expect(fakeBookmarks.downloadFileCalls, isEmpty);
+      expect(fakeBookmarks.downloadFileCalls, ['${tempDir.path}/01.mp3']);
+    });
+
+    test(
+        'finds embedded artwork on the first track without calling '
+        'MusicBrainz', () async {
+      // A scan's own embedded-artwork extraction can fail for reasons that
+      // aren't actually deterministic (or, before this fix, retryArtwork
+      // never checked it at all) — a retry re-downloads the first track and
+      // gives it a fresh chance before falling back to MusicBrainz.
+      await dbService.saveTracks(tempDir.path, [
+        Track(
+            path: '${tempDir.path}/01.mp3', title: 'Track One', trackNumber: 1),
+      ]);
+      // Outside the release's own folder — a file living there would be
+      // picked up by _findArtFile as if it were a real folder image,
+      // short-circuiting before embedded-artwork extraction is even
+      // attempted.
+      final extractedPath = '${tempDir.path}_embedded.jpg';
+      await File(extractedPath).writeAsBytes([1, 2, 3]);
+      fakeMetadata.artworkPaths['${tempDir.path}/01.mp3'] = extractedPath;
+
+      final result = await service.retryArtwork(tempDir.path,
+          albumArtist: 'Artist', albumTitle: 'Title');
+
+      // Copied into the release's own folder, not left at wherever it was
+      // extracted to — see _persistExtractedArtwork.
+      expect(result, '${tempDir.path}/cover.jpg');
+      expect(fakeMusicBrainz.wasCalled, isFalse);
+      expect(fakeBookmarks.evictFileCalls, ['${tempDir.path}/01.mp3']);
+      final row = await dbService.loadRelease(tempDir.path);
+      expect(row!['art_path'], '${tempDir.path}/cover.jpg');
     });
   });
 
@@ -677,6 +747,24 @@ void main() {
       await service.retryMissingArtwork(onProgress: () => calls++);
 
       expect(calls, 2);
+    });
+
+    test(
+        'a release that fails unexpectedly does not stop later releases in '
+        'the sweep', () async {
+      final failing = await makeRelease('Fails',
+          albumArtist: 'Artist', albumTitle: 'Title A');
+      final succeeds = await makeRelease('Succeeds',
+          albumArtist: 'Artist', albumTitle: 'Title B');
+      fakeMusicBrainz.artPathToReturn = '${succeeds.path}/cover.jpg';
+      fakeMusicBrainz.throwForFolderPaths = {failing.path};
+      var progressCalls = 0;
+
+      await service.retryMissingArtwork(onProgress: () => progressCalls++);
+
+      final row = await dbService.loadRelease(succeeds.path);
+      expect(row!['art_path'], '${succeeds.path}/cover.jpg');
+      expect(progressCalls, 2);
     });
 
     test('calls onArtworkResolved only when something was actually found',

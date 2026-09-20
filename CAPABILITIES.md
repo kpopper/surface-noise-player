@@ -21,6 +21,7 @@ writing a feature; remove or update it when behaviour changes.
 - When a release is newly discovered, only its first track (by filename) is downloaded; its embedded album artist/album title metadata is read from it, and it is evicted again afterwards — the rest of the release's tracks are left untouched
 - Reading the first track's embedded metadata during a scan only informs the release-level album artist/album title — the track's own title/artist/track-number stay filename-derived, the same as every other track, until it is actually played (see Audio metadata)
 - If a release's first-track download times out, the release is still created (using filename-derived tracks and the folder name as a fallback), and is retried on a future sync rather than left permanently unresolved
+- A release retried this way keeps any artwork already found by an unrelated manual retry (see Album art) even if this sync's own attempt finds nothing new — it is never regressed back to no artwork
 - Album artwork for a newly discovered release is resolved from a folder image file first (no download needed), then from the first track's embedded artwork once it has downloaded, then a MusicBrainz lookup (see Album art)
 - A newly discovered release is assigned an activity timestamp at discovery time, so it sorts to the top of the library until played
 
@@ -56,12 +57,13 @@ writing a feature; remove or update it when behaviour changes.
 - A release folder may contain cover art as a `.jpg`, `.jpeg`, or `.png` file
 - Preferred filenames are checked in order: `cover.jpg`, `folder.jpg`, `artwork.jpg`, `front.jpg`
 - If none of those are present, the first image file found in the folder is used
-- If no image file is present, embedded artwork from the audio files is extracted and used
+- If no image file is present, embedded artwork from the audio files is extracted and saved as `cover.jpg` in the release folder (the same as a MusicBrainz download), rather than left in the app's own internal storage — so it stays available even after the app itself is reinstalled
 - A MusicBrainz Cover Art Archive lookup (by album artist — falling back to the first track's own artist tag when album artist is absent — and album title, preferring the earliest release date, fetched at the release-group level so any edition's scanned cover satisfies the lookup) is attempted during a release's initial scan whenever neither a local file nor embedded artwork is found, saving the result as `cover.jpg` in the release folder
 - If searching with the full artist name finds nothing and it starts with "The ", the lookup retries once without it — tags often include a leading "The" that MusicBrainz's canonical artist credit sometimes omits
-- If a release still has no artwork, opening its release screen makes a single further attempt (a folder-image recheck, then MusicBrainz again — falling back to a fresh read of the first track's own artist tag first if the release has no stored album artist to search with) — not retried again while the screen stays open, and not attempted automatically in the background otherwise
-- Tapping the refresh button also retries artwork resolution for every currently-known, fully-scanned release that still has none, in addition to the regular directory sync (see Library screen) — this only happens on an explicit refresh, never automatically on launch
+- If a release still has no artwork, opening its release screen makes a single further attempt (a folder-image recheck, then the first track's embedded artwork, then MusicBrainz — falling back to a fresh read of the first track's own artist tag first if the release has no stored album artist to search with) — not retried again while the screen stays open, and not attempted automatically in the background otherwise
+- Tapping the refresh button also retries artwork resolution for every currently-known, fully-scanned release that still has none, in addition to the regular directory sync (see Library screen) — this only happens on an explicit refresh, never automatically on launch; each release goes through the same folder-image, then embedded-artwork, then MusicBrainz order as the single on-demand retry
 - MusicBrainz lookups are serialized to at most one request per second (matching its published rate limit), regardless of how many releases are being resolved at once — so a refresh retrying artwork for many releases may take a while to work through all of them
+- A single release's artwork resolution failing unexpectedly during a refresh sweep does not stop the rest of the sweep — every other release is still attempted
 - If neither a file nor embedded artwork is available, `artPath` is null and a placeholder is shown
 - A release card shows a square thumbnail of the cover art (or placeholder) on the left
 - The release screen shows the cover art as a full-width header above the track list
