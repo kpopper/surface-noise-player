@@ -69,6 +69,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _buildBody(BuildContext context, LibraryProvider lib) {
+    // Blank until the initial database load resolves, rather than briefly
+    // showing the no-root CTA while rootPath is still its unset default.
+    if (!lib.initialized) {
+      return const SizedBox.shrink();
+    }
+
     if (lib.rootPath == null) {
       return Center(
         child: Column(

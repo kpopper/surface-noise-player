@@ -130,6 +130,7 @@ writing a feature; remove or update it when behaviour changes.
 
 ## Library screen
 
+- On app launch, the screen body is blank — no empty-state prompt and no spinner — until the initial database load has determined whether a library root is selected (and, if one is, loaded its already-known releases); only then does it show the release list, the no-root CTA, or the no-releases CTA
 - When no root folder has been selected, an empty-state prompt is shown with a button to choose a library folder
 - When a root folder is selected but the library is empty (no valid subfolders found), an empty-state message is shown with a button to choose a different library folder
 - When releases exist, one card is shown per release
