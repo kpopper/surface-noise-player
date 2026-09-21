@@ -6,6 +6,7 @@ import 'package:surface_noise_player/services/database_service.dart';
 import 'package:surface_noise_player/services/library_service.dart';
 import 'package:surface_noise_player/services/metadata_service.dart';
 import '../../helpers/fake_bookmark_service.dart';
+import '../../helpers/fake_itunes_artwork_service.dart';
 import '../../helpers/fake_metadata_service.dart';
 import '../../helpers/fake_music_brainz_service.dart';
 
@@ -56,6 +57,7 @@ void main() {
     late FakeMetadataService fakeMetadata;
     late FakeBookmarkService fakeBookmarks;
     late FakeMusicBrainzService fakeMusicBrainz;
+    late FakeItunesArtworkService fakeItunesArtwork;
     late LibraryService service;
 
     setUp(() async {
@@ -64,11 +66,13 @@ void main() {
       fakeMetadata = FakeMetadataService();
       fakeBookmarks = FakeBookmarkService();
       fakeMusicBrainz = FakeMusicBrainzService();
+      fakeItunesArtwork = FakeItunesArtworkService();
       service = LibraryService.forTest(
         dbService,
         metadata: fakeMetadata,
         bookmarks: fakeBookmarks,
         musicBrainz: fakeMusicBrainz,
+        itunesArtwork: fakeItunesArtwork,
         scanPollInterval: Duration.zero,
         scanDownloadTimeout: const Duration(milliseconds: 50),
       );
@@ -260,6 +264,32 @@ void main() {
         await service.syncLibrary(tempRoot.path);
         expect(fakeMusicBrainz.wasCalled, isTrue);
         expect(fakeMusicBrainz.lastFetchedArtist, 'Track Artist');
+      });
+
+      test(
+          'falls back to iTunes when MusicBrainz finds no artwork',
+          () async {
+        final albumDir = await createAlbum('Album', ['01.mp3']);
+        fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(
+            albumArtist: 'The Artist', albumTitle: 'Great Album');
+        fakeMusicBrainz.artPathToReturn = null;
+        fakeItunesArtwork.artPathToReturn = '${albumDir.path}/cover.jpg';
+        await service.syncLibrary(tempRoot.path);
+        final row = await dbService.loadRelease(albumDir.path);
+        expect(row!['art_path'], '${albumDir.path}/cover.jpg');
+        expect(fakeItunesArtwork.lastFetchedArtist, 'The Artist');
+        expect(fakeItunesArtwork.lastFetchedTitle, 'Great Album');
+      });
+
+      test(
+          'does not call iTunes when MusicBrainz already found artwork',
+          () async {
+        final albumDir = await createAlbum('Album', ['01.mp3']);
+        fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(
+            albumArtist: 'The Artist', albumTitle: 'Great Album');
+        fakeMusicBrainz.artPathToReturn = '${albumDir.path}/cover.jpg';
+        await service.syncLibrary(tempRoot.path);
+        expect(fakeItunesArtwork.wasCalled, isFalse);
       });
 
       test(
@@ -609,6 +639,7 @@ void main() {
     late FakeMetadataService fakeMetadata;
     late FakeBookmarkService fakeBookmarks;
     late FakeMusicBrainzService fakeMusicBrainz;
+    late FakeItunesArtworkService fakeItunesArtwork;
     late LibraryService service;
 
     setUp(() async {
@@ -617,11 +648,13 @@ void main() {
       fakeMetadata = FakeMetadataService();
       fakeBookmarks = FakeBookmarkService();
       fakeMusicBrainz = FakeMusicBrainzService();
+      fakeItunesArtwork = FakeItunesArtworkService();
       service = LibraryService.forTest(
         dbService,
         metadata: fakeMetadata,
         bookmarks: fakeBookmarks,
         musicBrainz: fakeMusicBrainz,
+        itunesArtwork: fakeItunesArtwork,
         scanPollInterval: Duration.zero,
         scanDownloadTimeout: const Duration(milliseconds: 50),
       );
@@ -653,6 +686,25 @@ void main() {
       expect(fakeMusicBrainz.lastFetchedTitle, 'Title');
       final row = await dbService.loadRelease(tempDir.path);
       expect(row!['art_path'], '${tempDir.path}/cover.jpg');
+    });
+
+    test('falls back to iTunes when MusicBrainz finds no artwork', () async {
+      fakeItunesArtwork.artPathToReturn = '${tempDir.path}/cover.jpg';
+      final result = await service.retryArtwork(tempDir.path,
+          albumArtist: 'Artist', albumTitle: 'Title');
+      expect(result, '${tempDir.path}/cover.jpg');
+      expect(fakeItunesArtwork.lastFetchedArtist, 'Artist');
+      expect(fakeItunesArtwork.lastFetchedTitle, 'Title');
+      final row = await dbService.loadRelease(tempDir.path);
+      expect(row!['art_path'], '${tempDir.path}/cover.jpg');
+    });
+
+    test('does not call iTunes when MusicBrainz already found artwork',
+        () async {
+      fakeMusicBrainz.artPathToReturn = '${tempDir.path}/cover.jpg';
+      await service.retryArtwork(tempDir.path,
+          albumArtist: 'Artist', albumTitle: 'Title');
+      expect(fakeItunesArtwork.wasCalled, isFalse);
     });
 
     test('returns null and leaves the DB row untouched when nothing is found',
@@ -778,6 +830,7 @@ void main() {
     late Directory tempRoot;
     late DatabaseService dbService;
     late FakeMusicBrainzService fakeMusicBrainz;
+    late FakeItunesArtworkService fakeItunesArtwork;
     late LibraryService service;
 
     setUp(() async {
@@ -785,7 +838,9 @@ void main() {
           await Directory.systemTemp.createTemp('snp_bulk_art_retry_test_');
       dbService = DatabaseService.forTest(inMemoryDatabasePath);
       fakeMusicBrainz = FakeMusicBrainzService();
-      service = LibraryService.forTest(dbService, musicBrainz: fakeMusicBrainz);
+      fakeItunesArtwork = FakeItunesArtworkService();
+      service = LibraryService.forTest(dbService,
+          musicBrainz: fakeMusicBrainz, itunesArtwork: fakeItunesArtwork);
     });
 
     tearDown(() async {
@@ -820,6 +875,17 @@ void main() {
       final release = await makeRelease('Album',
           albumArtist: 'Artist', albumTitle: 'Title');
       fakeMusicBrainz.artPathToReturn = '${release.path}/cover.jpg';
+
+      await service.retryMissingArtwork();
+
+      final row = await dbService.loadRelease(release.path);
+      expect(row!['art_path'], '${release.path}/cover.jpg');
+    });
+
+    test('falls back to iTunes when MusicBrainz finds no artwork', () async {
+      final release = await makeRelease('Album',
+          albumArtist: 'Artist', albumTitle: 'Title');
+      fakeItunesArtwork.artPathToReturn = '${release.path}/cover.jpg';
 
       await service.retryMissingArtwork();
 

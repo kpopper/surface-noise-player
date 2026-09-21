@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/release.dart';
 import 'bookmark_service.dart';
 import 'database_service.dart';
+import 'itunes_artwork_service.dart';
 import 'metadata_service.dart';
 import 'music_brainz_service.dart';
 
@@ -31,6 +32,7 @@ class LibraryService {
   final MetadataService _metadata;
   final BookmarkService _bookmarks;
   final MusicBrainzService _musicBrainz;
+  final ItunesArtworkService _itunesArtwork;
 
   // How often to re-check availability while waiting for a release's first
   // track to download during a scan, and how long to wait before giving up
@@ -47,10 +49,12 @@ class LibraryService {
     MusicBrainzService? musicBrainz,
     Duration? scanPollInterval,
     Duration? scanDownloadTimeout,
+    ItunesArtworkService? itunesArtwork,
   ])  : _db = db ?? DatabaseService.instance,
         _metadata = metadata ?? MetadataService.instance,
         _bookmarks = bookmarks ?? BookmarkService.instance,
         _musicBrainz = musicBrainz ?? MusicBrainzService.instance,
+        _itunesArtwork = itunesArtwork ?? ItunesArtworkService.instance,
         _scanPollInterval = scanPollInterval ?? const Duration(seconds: 1),
         _scanDownloadTimeout =
             scanDownloadTimeout ?? const Duration(seconds: 30);
@@ -65,9 +69,10 @@ class LibraryService {
     MusicBrainzService? musicBrainz,
     Duration? scanPollInterval,
     Duration? scanDownloadTimeout,
+    ItunesArtworkService? itunesArtwork,
   }) =>
       LibraryService._(db, metadata, bookmarks, musicBrainz, scanPollInterval,
-          scanDownloadTimeout);
+          scanDownloadTimeout, itunesArtwork);
 
   Future<String?> pickLibraryFolder() async {
     final currentRoot = await _db.savedLibraryRoot();
@@ -363,14 +368,15 @@ class LibraryService {
   // The single place artwork is resolved from every source, in priority
   // order: a folder image file, then (only when the first track has
   // already been downloaded this call — during a scan, or by retryArtwork)
-  // its embedded artwork, then a MusicBrainz lookup — falling back to the
-  // track's own artist tag when no album artist is known, since ripped CDs
-  // often tag the track artist (TPE1) but not the album artist (TPE2).
-  // Every caller that fetches artwork goes through this, so a source or
-  // fallback added here automatically covers all of them — this
-  // consolidation exists because the artist-tag fallback was previously
-  // duplicated per call site and silently dropped from one of them during
-  // a rewrite.
+  // its embedded artwork, then a MusicBrainz lookup, then an iTunes Search
+  // API lookup as a further fallback for whatever MusicBrainz can't find —
+  // falling back to the track's own artist tag when no album artist is
+  // known, since ripped CDs often tag the track artist (TPE1) but not the
+  // album artist (TPE2). Every caller that fetches artwork goes through
+  // this, so a source or fallback added here automatically covers all of
+  // them — this consolidation exists because the artist-tag fallback was
+  // previously duplicated per call site and silently dropped from one of
+  // them during a rewrite.
   //
   // Embedded artwork is copied into the release's own folder (see
   // _persistExtractedArtwork) rather than used from wherever it was
@@ -397,6 +403,10 @@ class LibraryService {
     if (artPath == null) {
       final searchArtist = albumArtist ?? await resolveFirstTrackArtist();
       artPath = await _musicBrainz.fetchArtwork(
+          albumArtist: searchArtist,
+          albumTitle: albumTitle,
+          folderPath: folderPath);
+      artPath ??= await _itunesArtwork.fetchArtwork(
           albumArtist: searchArtist,
           albumTitle: albumTitle,
           folderPath: folderPath);
