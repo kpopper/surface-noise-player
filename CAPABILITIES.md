@@ -116,6 +116,7 @@ writing a feature; remove or update it when behaviour changes.
 - Shows the filename-derived track title until the track's real metadata has been read (see Audio metadata)
 - Provides play/pause and skip controls; the play/pause control becomes a spinner while waiting for the current track to download
 - Tapping it opens the Now Playing screen
+- Swiping up on it also opens the Now Playing screen, same as tapping
 - Sized for easy tapping: larger art thumbnail, text, and control icons than a standard compact bar, with generous padding
 
 ## Now Playing screen

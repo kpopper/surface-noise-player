@@ -45,83 +45,91 @@ class MiniPlayer extends StatelessWidget {
                 svc.currentRelease?.name;
             final isWaiting = waitingSnap.data ?? false;
 
-            return Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                border: Border(
-                  top: BorderSide(color: Theme.of(context).dividerColor),
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragEnd: (details) {
+                final velocity = details.velocity.pixelsPerSecond.dy;
+                if (velocity < -250) onTap?.call();
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  border: Border(
+                    top: BorderSide(color: Theme.of(context).dividerColor),
+                  ),
                 ),
-              ),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-              child: Row(
-                children: [
-                  ArtThumbnail(artPath: svc.currentRelease?.artPath, size: 56),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onTap,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 16)),
-                          if (album != null)
-                            Text(album,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                child: Row(
+                  children: [
+                    ArtThumbnail(
+                        artPath: svc.currentRelease?.artPath, size: 56),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onTap,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                    fontSize: 13, color: Colors.grey)),
-                        ],
+                                    fontWeight: FontWeight.bold, fontSize: 16)),
+                            if (album != null)
+                              Text(album,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 13, color: Colors.grey)),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  StreamBuilder<PlayerState>(
-                    stream: svc.playerStateStream,
-                    builder: (context, stateSnap) {
-                      final state = stateSnap.data;
-                      final playing = (state?.playing ?? false) &&
-                          state?.processingState != ProcessingState.completed;
-                      return Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            iconSize: 30,
-                            icon: const Icon(Icons.skip_previous),
-                            onPressed:
-                                svc.hasPrevious ? svc.seekToPrevious : null,
-                          ),
-                          if (isWaiting)
-                            const SizedBox(
-                              width: 34,
-                              height: 34,
-                              child: Padding(
-                                padding: EdgeInsets.all(6),
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2.5),
-                              ),
-                            )
-                          else
+                    StreamBuilder<PlayerState>(
+                      stream: svc.playerStateStream,
+                      builder: (context, stateSnap) {
+                        final state = stateSnap.data;
+                        final playing = (state?.playing ?? false) &&
+                            state?.processingState != ProcessingState.completed;
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                             IconButton(
-                              iconSize: 34,
-                              icon: Icon(
-                                  playing ? Icons.pause : Icons.play_arrow),
-                              onPressed: playing ? svc.pause : svc.play,
+                              iconSize: 30,
+                              icon: const Icon(Icons.skip_previous),
+                              onPressed:
+                                  svc.hasPrevious ? svc.seekToPrevious : null,
                             ),
-                          IconButton(
-                            iconSize: 30,
-                            icon: const Icon(Icons.skip_next),
-                            onPressed: svc.hasNext ? svc.seekToNext : null,
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
+                            if (isWaiting)
+                              const SizedBox(
+                                width: 34,
+                                height: 34,
+                                child: Padding(
+                                  padding: EdgeInsets.all(6),
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2.5),
+                                ),
+                              )
+                            else
+                              IconButton(
+                                iconSize: 34,
+                                icon: Icon(
+                                    playing ? Icons.pause : Icons.play_arrow),
+                                onPressed: playing ? svc.pause : svc.play,
+                              ),
+                            IconButton(
+                              iconSize: 30,
+                              icon: const Icon(Icons.skip_next),
+                              onPressed: svc.hasNext ? svc.seekToNext : null,
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             );
           },

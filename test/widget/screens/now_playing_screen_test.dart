@@ -75,4 +75,70 @@ void main() {
     expect(find.text('Track One'), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
+
+  testWidgets('swiping down dismisses the screen', (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final fake = FakePlayerService();
+
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => NowPlayingScreen(playerService: fake)),
+              ),
+              child: const Text('Library'),
+            ),
+          ),
+        ),
+      ),
+    ));
+
+    await tester.tap(find.text('Library'));
+    await tester.pumpAndSettle();
+
+    fake.emitSequenceState(const MediaItem(id: '1', title: 'Track One'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(NowPlayingScreen), findsOneWidget);
+
+    await tester.fling(
+        find.byKey(const Key('now-playing-dismiss-area')),
+        const Offset(0, 300),
+        1000);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NowPlayingScreen), findsNothing);
+    expect(find.text('Library'), findsOneWidget);
+  });
+
+  testWidgets('swiping up does not dismiss the screen', (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final fake = FakePlayerService();
+
+    await tester
+        .pumpWidget(MaterialApp(home: NowPlayingScreen(playerService: fake)));
+
+    fake.emitSequenceState(const MediaItem(id: '1', title: 'Track One'));
+    await tester.pump();
+
+    await tester.fling(
+        find.byKey(const Key('now-playing-dismiss-area')),
+        const Offset(0, -300),
+        1000);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NowPlayingScreen), findsOneWidget);
+  });
 }
