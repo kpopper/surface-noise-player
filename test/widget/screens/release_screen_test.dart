@@ -251,8 +251,7 @@ void main() {
       expect(find.text('Old Name'), findsNothing);
     });
 
-    testWidgets(
-        'hides the track list and Play all button when there are no tracks yet',
+    testWidgets('hides the track list when there are no tracks yet',
         (tester) async {
       final release = Release(
           folderPath: '/music/Test',
@@ -273,11 +272,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No tracks found yet'), findsOneWidget);
-      expect(find.text('Play all'), findsNothing);
     });
 
-    testWidgets('shows the track list and Play all button once tracks appear',
-        (tester) async {
+    testWidgets('shows the track list once tracks appear', (tester) async {
       final release = Release(
           folderPath: '/music/Test',
           name: 'Test',
@@ -295,7 +292,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Play all'), findsNothing);
+      expect(find.text('Track One'), findsNothing);
 
       fakeService.releasesToReturn = [
         Release(
@@ -312,7 +309,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Track One'), findsOneWidget);
-      expect(find.text('Play all'), findsOneWidget);
     });
   });
 
