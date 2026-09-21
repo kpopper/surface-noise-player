@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/abstract_player_service.dart';
 

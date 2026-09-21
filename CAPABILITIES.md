@@ -106,6 +106,7 @@ writing a feature; remove or update it when behaviour changes.
 - If no track in the release is available and none can be downloaded, a message is shown and playback stops cleanly without looping or crashing
 - Reaching the end of the release's last track stops playback and closes the mini player, rather than leaving it showing the last track as playing
 - If playback stops because no further track could be played, the mini player closes the same way
+- The lock screen and Control Center show play/pause and skip previous/next controls, and skipping via them behaves exactly like tapping the on-screen skip controls (including requesting a download and waiting if the target track isn't locally available) — not tied to whichever tracks happen to already be loaded into the audio player
 
 ## Mini player
 

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart';
 import '../services/abstract_player_service.dart';
 import '../services/player_service.dart';
 import '../widgets/art_thumbnail.dart';
