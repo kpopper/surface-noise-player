@@ -4,6 +4,7 @@
 
 - [ ] ZIP import — auto-scan iCloud Drive Downloads for ZIPs containing audio files; extract into library with ID3-derived `Artist - Album` folder names; archive source ZIP to `_zips/`; auto-select the new release
 - [ ] Add swipe gestures to navigate from mini player to Now playing and to minimise Now Playing window
+- [ ] Allow user to "download" releases explicitly (keep a release downloaded / auto-re-download on app start etc)
 
 ## Completed
 
