@@ -373,18 +373,6 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
               },
             ),
           ),
-          if (release.tracks.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: FilledButton.icon(
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Play all'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 48),
-                ),
-                onPressed: () => _playerSvc.playRelease(release),
-              ),
-            ),
         ],
       ),
     );

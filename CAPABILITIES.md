@@ -94,7 +94,7 @@ writing a feature; remove or update it when behaviour changes.
 
 - Tracks are loaded and played one at a time, in release track order, regardless of local availability at the moment playback starts — the full track list is the queue, not just the currently-available subset
 - Before loading a track, its local availability is checked; if it is not locally available, an iCloud download is requested for it and playback pauses (showing a buffering/waiting state) until it becomes available, then playback starts automatically without further user action
-- Requesting to play any track (Play All, tapping a specific track, or skipping to the next/previous track) also requests an iCloud download of the whole release, not just the requested track — this happens on every such request, even if the requested track is already locally available, so the rest of the release keeps downloading in the background
+- Requesting to play any track (tapping a specific track, or skipping to the next/previous track) also requests an iCloud download of the whole release, not just the requested track — this happens on every such request, even if the requested track is already locally available, so the rest of the release keeps downloading in the background
 - The mini player (and the Now Playing screen, if open) appears as soon as a track is requested, not only once it is actually loaded into the player — tapping a track that needs to download gives immediate visual feedback rather than appearing to do nothing until the download finishes
 - While the player is waiting for a track to download, the mini player's and Now Playing screen's play/pause control is replaced by a spinner; previous/next controls remain available
 - While the player is waiting for a track to download, the corresponding row in the release screen shows a spinner in place of its track number
@@ -149,7 +149,8 @@ writing a feature; remove or update it when behaviour changes.
 
 - Shows the release's current data from the database and updates itself automatically as that data changes (e.g. a background sync finishing its scan, or a track's metadata being read on first play) — it does not need to be reopened to reflect changes
 - If the release is removed from the library while this screen is open (e.g. its folder disappears in a sync), the screen closes itself automatically
-- If the release has no known tracks yet, the track list and "Play all" button are hidden and a message is shown instead; both appear as soon as tracks are known
+- If the release has no known tracks yet, the track list is hidden and a message is shown instead; it appears as soon as tracks are known
+- There is no "Play all" button — tapping the first track plays the full release starting from it, the same as any other track
 - Each track's local availability (e.g. downloaded from iCloud or not) is checked when the screen opens
 - Availability is re-checked periodically (every 2 seconds) for as long as the screen stays open, so a track that finishes downloading in the background — including one that isn't the currently-playing track — updates from a cloud icon to its track number without needing the screen to be reopened; this keeps running even once every track currently looks available, since eviction (see Library scanning) is only a request to iOS, which may not reclaim a track's local copy immediately — a track can flip back to unavailable at any time with no other signal to catch it
 - A track's leading icon shows, in priority order: a spinner if it's the currently-playing track and its download is still in progress, an equalizer icon if it's the currently-playing track, a cloud icon if it's known but not locally available, or its track number if it's locally available
