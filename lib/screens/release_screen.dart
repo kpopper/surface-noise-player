@@ -37,12 +37,16 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
   bool _rescanning = false;
 
   // Availability isn't part of the database — it's a live iCloud filesystem
-  // property that can change in the background as a requested download
-  // completes, independently of anything LibraryProvider would notify about.
-  // While at least one track is still marked unavailable, poll for changes
-  // so the icon catches up once it actually finishes downloading, rather
-  // than staying stuck on whatever was true the moment it was last checked.
-  // Cancels itself once nothing is left to wait for.
+  // property that can change in the background, independently of anything
+  // LibraryProvider would notify about. Keeps running for as long as this
+  // screen stays open, even once every track currently looks available:
+  // eviction (see LibraryService) is only a request to iOS, which decides
+  // if and when to actually reclaim the local copy — often not immediately,
+  // especially right after this same process just read the file — so a
+  // track can flip back to unavailable at any time with no signal we'd
+  // otherwise catch. isFileAvailable is a cheap local filesystem check, not
+  // a network call, so polling it continuously while one screen is open is
+  // inexpensive.
   Timer? _availabilityPollTimer;
 
   @override
@@ -79,13 +83,8 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
           if (!results[i]) release.tracks[i].path,
       };
     });
-    if (_unavailablePaths.isEmpty) {
-      _availabilityPollTimer?.cancel();
-      _availabilityPollTimer = null;
-    } else {
-      _availabilityPollTimer ??= Timer.periodic(
-          const Duration(seconds: 2), (_) => _pollAvailability());
-    }
+    _availabilityPollTimer ??=
+        Timer.periodic(const Duration(seconds: 2), (_) => _pollAvailability());
   }
 
   void _pollAvailability() {

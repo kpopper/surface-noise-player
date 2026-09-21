@@ -142,14 +142,18 @@ void main() {
       });
 
       test('downloads only the first track, not every track', () async {
-        await createAlbum('Album', ['01.mp3', '02.mp3', '03.mp3']);
+        final albumDir =
+            await createAlbum('Album', ['01.mp3', '02.mp3', '03.mp3']);
+        fakeBookmarks.unavailablePaths = {'${albumDir.path}/01.mp3'};
         await service.syncLibrary(tempRoot.path);
         expect(fakeBookmarks.downloadFileCalls.length, 1);
         expect(fakeBookmarks.downloadFileCalls.first, endsWith('01.mp3'));
       });
 
       test('evicts the first track after reading its metadata', () async {
-        await createAlbum('Album', ['01.mp3']);
+        final albumDir = await createAlbum('Album', ['01.mp3']);
+        fakeBookmarks.unavailablePaths = {'${albumDir.path}/01.mp3'};
+        fakeBookmarks.downloadFileGrantsAvailability = true;
         await service.syncLibrary(tempRoot.path);
         expect(fakeBookmarks.evictFileCalls.length, 1);
         expect(fakeBookmarks.evictFileCalls.first, endsWith('01.mp3'));
@@ -302,6 +306,11 @@ void main() {
           () async {
         final albumA = await createAlbum('Album A', ['01.mp3']);
         final albumB = await createAlbum('Album B', ['01.mp3']);
+        fakeBookmarks.unavailablePaths = {
+          '${albumA.path}/01.mp3',
+          '${albumB.path}/01.mp3',
+        };
+        fakeBookmarks.downloadFileGrantsAvailability = true;
         fakeMetadata.responses['${albumA.path}/01.mp3'] =
             const AudioMetadata(albumTitle: 'A');
         fakeMetadata.responses['${albumB.path}/01.mp3'] =
@@ -481,6 +490,8 @@ void main() {
 
       test('downloads and evicts the first track again', () async {
         final albumDir = await createAlbum('Album', ['01.mp3']);
+        fakeBookmarks.unavailablePaths = {'${albumDir.path}/01.mp3'};
+        fakeBookmarks.downloadFileGrantsAvailability = true;
         await service.syncLibrary(tempRoot.path);
         fakeBookmarks.downloadFileCalls.clear();
         fakeBookmarks.evictFileCalls.clear();
@@ -489,6 +500,30 @@ void main() {
 
         expect(fakeBookmarks.downloadFileCalls, ['${albumDir.path}/01.mp3']);
         expect(fakeBookmarks.evictFileCalls, ['${albumDir.path}/01.mp3']);
+      });
+
+      test(
+          'does not evict the first track when it was already downloaded '
+          'before the rescan', () async {
+        // Regression: rescanning an already-fully-downloaded release used to
+        // evict its first track purely as a side effect of reading its
+        // tags, leaving the rest of the release downloaded but not the
+        // first track — jarring for a release the user otherwise kept
+        // downloaded.
+        final albumDir = await createAlbum('Album', ['01.mp3']);
+        fakeBookmarks.unavailablePaths = {'${albumDir.path}/01.mp3'};
+        fakeBookmarks.downloadFileGrantsAvailability = true;
+        await service.syncLibrary(tempRoot.path);
+        // The first track is available again by the time of the rescan
+        // (e.g. it was re-downloaded, or never actually evicted elsewhere).
+        fakeBookmarks.unavailablePaths = {};
+        fakeBookmarks.downloadFileCalls.clear();
+        fakeBookmarks.evictFileCalls.clear();
+
+        await service.rescanRelease(albumDir.path);
+
+        expect(fakeBookmarks.downloadFileCalls, isEmpty);
+        expect(fakeBookmarks.evictFileCalls, isEmpty);
       });
 
       test('leaves first_track_scanned set', () async {
@@ -639,6 +674,8 @@ void main() {
         Track(
             path: '${tempDir.path}/01.mp3', title: 'Track One', trackNumber: 1),
       ]);
+      fakeBookmarks.unavailablePaths = {'${tempDir.path}/01.mp3'};
+      fakeBookmarks.downloadFileGrantsAvailability = true;
       fakeMetadata.responses['${tempDir.path}/01.mp3'] =
           const AudioMetadata(artist: 'Track Artist');
       fakeMusicBrainz.artPathToReturn = '${tempDir.path}/cover.jpg';
@@ -649,6 +686,28 @@ void main() {
       expect(result, '${tempDir.path}/cover.jpg');
       expect(fakeMusicBrainz.lastFetchedArtist, 'Track Artist');
       expect(fakeBookmarks.evictFileCalls, ['${tempDir.path}/01.mp3']);
+    });
+
+    test(
+        'does not evict the first track when it was already downloaded',
+        () async {
+      // Same regression as rescanRelease's: an artwork retry on an
+      // already-downloaded release shouldn't evict its first track purely
+      // as a side effect of checking embedded artwork.
+      await dbService.saveTracks(tempDir.path, [
+        Track(
+            path: '${tempDir.path}/01.mp3', title: 'Track One', trackNumber: 1),
+      ]);
+      final extractedPath = '${tempDir.path}_embedded.jpg';
+      await File(extractedPath).writeAsBytes([1, 2, 3]);
+      fakeMetadata.artworkPaths['${tempDir.path}/01.mp3'] = extractedPath;
+
+      final result = await service.retryArtwork(tempDir.path,
+          albumArtist: 'Artist', albumTitle: 'Title');
+
+      expect(result, '${tempDir.path}/cover.jpg'); // still resolved
+      expect(fakeBookmarks.downloadFileCalls, isEmpty);
+      expect(fakeBookmarks.evictFileCalls, isEmpty);
     });
 
     test(
@@ -673,6 +732,7 @@ void main() {
         Track(
             path: '${tempDir.path}/01.mp3', title: 'Track One', trackNumber: 1),
       ]);
+      fakeBookmarks.unavailablePaths = {'${tempDir.path}/01.mp3'};
 
       await service.retryArtwork(tempDir.path,
           albumArtist: 'Artist', albumTitle: 'Title');
@@ -691,6 +751,8 @@ void main() {
         Track(
             path: '${tempDir.path}/01.mp3', title: 'Track One', trackNumber: 1),
       ]);
+      fakeBookmarks.unavailablePaths = {'${tempDir.path}/01.mp3'};
+      fakeBookmarks.downloadFileGrantsAvailability = true;
       // Outside the release's own folder — a file living there would be
       // picked up by _findArtFile as if it were a real folder image,
       // short-circuiting before embedded-artwork extraction is even

@@ -120,6 +120,60 @@ void main() {
     });
 
     testWidgets(
+        'keeps polling after every track becomes available, so a later '
+        'eviction is still caught', (tester) async {
+      // Regression: eviction (e.g. after a manual rescan, or the on-demand
+      // artwork retry) is only a request to iOS — the system decides if and
+      // when to actually reclaim the local copy, often not immediately,
+      // especially right after this same process just read the file. The
+      // poll used to stop itself the moment everything looked available,
+      // so a track that flipped back to unavailable later (once iOS
+      // actually got around to evicting it) had nothing left watching for
+      // that change, leaving the cloud icon stuck hidden.
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [
+          Track(path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1),
+        ],
+        tags: const [],
+      );
+      final fakeBookmarks = FakeBookmarkService()
+        ..unavailablePaths = {'/music/Test/01.mp3'};
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            home:
+                ReleaseScreen(release: release, bookmarkService: fakeBookmarks),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
+
+      // Becomes available (e.g. downloaded to read its tags) — the poll
+      // should pick this up and, with the old behaviour, would have
+      // stopped itself here.
+      fakeBookmarks.unavailablePaths = {};
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.byIcon(Icons.cloud_download_outlined), findsNothing);
+
+      // iOS only gets around to actually evicting it later.
+      fakeBookmarks.unavailablePaths = {'/music/Test/01.mp3'};
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
+    });
+
+    testWidgets(
         'reserves subtitle space so row height is the same with or without an artist',
         (tester) async {
       final release = Release(

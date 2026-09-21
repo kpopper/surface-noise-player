@@ -221,7 +221,13 @@ class LibraryService {
 
     final folderArtPath =
         await _findArtFile(folderPath); // folder-image check only — no download
-    await _bookmarks.downloadFile(firstTrackPath);
+    // Only download (and, below, evict) the first track if it isn't already
+    // locally available — otherwise an already-downloaded release would get
+    // its first track evicted by a scan/rescan purely incidental to reading
+    // its tags, leaving the rest of the release downloaded but not the
+    // first track.
+    final wasAlreadyAvailable = await _bookmarks.isFileAvailable(firstTrackPath);
+    if (!wasAlreadyAvailable) await _bookmarks.downloadFile(firstTrackPath);
     if (!await _awaitFileAvailable(firstTrackPath)) {
       // Still worth keeping any folder-image art found without a download,
       // even though the metadata read didn't happen this time. The release
@@ -243,7 +249,9 @@ class LibraryService {
         albumTitle: albumTitle,
         downloadedFirstTrackPath: firstTrackPath,
         resolveFirstTrackArtist: () async => meta.artist);
-    await _bookmarks.evictFile(firstTrackPath); // best-effort
+    if (!wasAlreadyAvailable) {
+      await _bookmarks.evictFile(firstTrackPath); // best-effort
+    }
 
     // A release can stay unresolved (retried by every sync via
     // _retryUnresolvedRelease) for a reason unrelated to artwork, e.g. its
@@ -281,9 +289,10 @@ class LibraryService {
   Future<String?> retryArtwork(String folderPath,
       {required String? albumArtist, required String? albumTitle}) async {
     final folderArtPath = await _findArtFile(folderPath);
-    final downloadedFirstTrackPath = folderArtPath == null
+    final firstTrackResult = folderArtPath == null
         ? await _downloadFirstTrackForRetry(folderPath)
-        : null;
+        : (path: null, wasAlreadyAvailable: false);
+    final downloadedFirstTrackPath = firstTrackResult.path;
 
     AudioMetadata? firstTrackMeta;
     Future<String?> resolveFirstTrackArtist() async {
@@ -301,7 +310,8 @@ class LibraryService {
         downloadedFirstTrackPath: downloadedFirstTrackPath,
         resolveFirstTrackArtist: resolveFirstTrackArtist);
 
-    if (downloadedFirstTrackPath != null) {
+    if (downloadedFirstTrackPath != null &&
+        !firstTrackResult.wasAlreadyAvailable) {
       await _bookmarks.evictFile(downloadedFirstTrackPath); // best-effort
     }
     if (artPath != null) await _db.updateArtPath(folderPath, artPath);
@@ -414,17 +424,24 @@ class LibraryService {
   }
 
   // Downloads the release's first track for retryArtwork, so its embedded
-  // artwork (and, if needed, its own artist tag) can be checked. The caller
-  // is responsible for evicting it again afterwards. Returns null — without
-  // downloading anything further — if the release has no tracks yet, or the
-  // download doesn't become available in time.
-  Future<String?> _downloadFirstTrackForRetry(String folderPath) async {
+  // artwork (and, if needed, its own artist tag) can be checked. Skips the
+  // download (and reports wasAlreadyAvailable: true) when the track is
+  // already locally available — an already-downloaded release shouldn't
+  // have its first track evicted by an artwork retry incidental to it,
+  // leaving the rest of the release downloaded but not the first track.
+  // path is null — without downloading anything further — if the release
+  // has no tracks yet, or the download doesn't become available in time.
+  Future<({String? path, bool wasAlreadyAvailable})> _downloadFirstTrackForRetry(
+      String folderPath) async {
     final tracks = await _db.loadTracks(folderPath);
-    if (tracks.isEmpty) return null;
+    if (tracks.isEmpty) return (path: null, wasAlreadyAvailable: false);
     final firstTrackPath = tracks.first['file_path'] as String;
-    await _bookmarks.downloadFile(firstTrackPath);
-    if (!await _awaitFileAvailable(firstTrackPath)) return null;
-    return firstTrackPath;
+    final wasAlreadyAvailable = await _bookmarks.isFileAvailable(firstTrackPath);
+    if (!wasAlreadyAvailable) await _bookmarks.downloadFile(firstTrackPath);
+    if (!await _awaitFileAvailable(firstTrackPath)) {
+      return (path: null, wasAlreadyAvailable: wasAlreadyAvailable);
+    }
+    return (path: firstTrackPath, wasAlreadyAvailable: wasAlreadyAvailable);
   }
 
   // Lists a folder's audio files purely from their filenames — no metadata
