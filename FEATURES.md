@@ -13,6 +13,7 @@
 - [ ] Allow a release's metadata to be rescanned
 - [ ] Don't evict first track after scanning metadata if it was already downloaded
 - [ ] Allow user to "download" releases explicitly (keep a release downloaded / auto-re-download on app start etc)
+- [ ] Fall back to the iTunes Search API (and possibly Discogs) for cover art when MusicBrainz has none
 
 ## Completed
 

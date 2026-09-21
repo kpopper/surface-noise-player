@@ -193,6 +193,18 @@ class LibraryService {
   Future<void> _retryUnresolvedRelease(String folderPath) =>
       _resolveFirstTrack(folderPath, folderPath.split('/').last);
 
+  // Explicit, user-triggered rescan of a release that's already been
+  // scanned — the file tags are treated as the source of truth, so this
+  // re-reads the first track's album artist/title and re-resolves artwork
+  // exactly as during initial discovery, overwriting the release's stored
+  // name, album title, album artist, and art path even if something
+  // different was already stored. Unlike syncLibrary, this runs regardless
+  // of first_track_scanned, since the whole point is to correct a release
+  // that already scanned successfully but whose file tags have since
+  // changed on disk.
+  Future<void> rescanRelease(String folderPath) =>
+      _resolveFirstTrack(folderPath, folderPath.split('/').last);
+
   // Attempts to resolve album-level info (name, art, albumArtist/albumTitle)
   // from the release's first track (by sorted filename), downloading and
   // evicting it as needed. Shared by brand-new discovery and by retrying a

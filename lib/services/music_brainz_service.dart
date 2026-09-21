@@ -167,16 +167,30 @@ class _MusicBrainzServiceImpl implements MusicBrainzService {
         .toList();
     final candidates = titleMatches.isNotEmpty ? titleMatches : releases;
 
+    // Prefer a release-group that's actually an Album — an artist's single
+    // or EP can share the exact same title as the album (e.g. Clinic's
+    // "Walking With Thee" 7" single, released a week ahead of the album of
+    // the same name), and picking by date alone can then pick the single's
+    // release-group — which the Cover Art Archive has no scan for — over
+    // the album's, which does. Falls back to every candidate when none is
+    // typed as an Album (e.g. the release actually is a single/EP).
+    final albumMatches = candidates
+        .where((r) =>
+            (r['release-group'] as Map<String, dynamic>?)?['primary-type'] ==
+            'Album')
+        .toList();
+    final typed = albumMatches.isNotEmpty ? albumMatches : candidates;
+
     // Prefer the earliest release date (original over reissues) to identify
     // the release group; individual editions within a group vary in whether
     // the Cover Art Archive has a scan, but a release-group lookup below
     // resolves to any edition that has one.
-    final withDates = candidates
+    final withDates = typed
         .where((r) => (r['date'] as String?)?.isNotEmpty == true)
         .toList()
       ..sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
 
-    final candidate = withDates.isNotEmpty ? withDates.first : candidates.first;
+    final candidate = withDates.isNotEmpty ? withDates.first : typed.first;
     return (candidate['release-group'] as Map<String, dynamic>?)?['id']
         as String?;
   }

@@ -261,4 +261,25 @@ class LibraryProvider extends ChangeNotifier {
     }
     return true;
   }
+
+  // Explicit, user-triggered rescan of a release from its release screen —
+  // e.g. after correcting the file tags on disk. Reloads the whole library
+  // afterwards (same as a sync) so the release's name/album title/artist
+  // and artwork pick up whatever the rescan found.
+  Future<void> rescanRelease(Release release) async {
+    final oldArtPath = release.artPath;
+    await _svc.rescanRelease(release.folderPath);
+    await _reloadReleases();
+    final index =
+        _releases.indexWhere((r) => r.folderPath == release.folderPath);
+    final newArtPath = index >= 0 ? _releases[index].artPath : null;
+    // Flutter's image cache is keyed by file path, not content — evict both
+    // the old and new paths so neither keeps showing stale cached bytes.
+    if (oldArtPath != null) {
+      PaintingBinding.instance.imageCache.evict(FileImage(File(oldArtPath)));
+    }
+    if (newArtPath != null && newArtPath != oldArtPath) {
+      PaintingBinding.instance.imageCache.evict(FileImage(File(newArtPath)));
+    }
+  }
 }

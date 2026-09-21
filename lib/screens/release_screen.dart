@@ -34,6 +34,7 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
   Set<String> _unavailablePaths = {};
   List<String> _lastCheckedTrackPaths = [];
   bool _closing = false;
+  bool _rescanning = false;
 
   // Availability isn't part of the database — it's a live iCloud filesystem
   // property that can change in the background as a requested download
@@ -133,6 +134,16 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
     await context.read<LibraryProvider>().removeTagFromRelease(release, tag);
   }
 
+  Future<void> _rescan(Release release) async {
+    if (_rescanning) return;
+    setState(() => _rescanning = true);
+    try {
+      await context.read<LibraryProvider>().rescanRelease(release);
+    } finally {
+      if (mounted) setState(() => _rescanning = false);
+    }
+  }
+
   void _showAddTagDialog(Release release) {
     showModalBottomSheet(
       context: context,
@@ -215,7 +226,26 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
     _maybeReloadAvailability(release);
 
     return Scaffold(
-      appBar: AppBar(title: Text(release.name)),
+      appBar: AppBar(
+        title: Text(release.name),
+        actions: [
+          if (_rescanning)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Rescan metadata',
+              onPressed: () => _rescan(release),
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(

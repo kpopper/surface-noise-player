@@ -441,6 +441,67 @@ void main() {
       });
     });
 
+    group('rescanRelease', () {
+      test('overwrites a previously stored name, album title, and artist '
+          'with freshly-read tags', () async {
+        final albumDir = await createAlbum('Album', ['01.mp3']);
+        fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(
+            albumArtist: 'Original', albumTitle: 'Original Album [UK]');
+        await service.syncLibrary(tempRoot.path); // first scan
+
+        fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(
+            albumArtist: 'Original', albumTitle: 'Original Album');
+        await service.rescanRelease(albumDir.path);
+
+        final row = await dbService.loadRelease(albumDir.path);
+        expect(row!['album_title'], 'Original Album');
+        expect(row['name'], 'Original - Original Album');
+      });
+
+      test('re-resolves artwork using the corrected tags', () async {
+        // Regression case: a release's first scan found no artwork because
+        // the stale tag didn't match anything on MusicBrainz; after the
+        // file's tag is corrected, a rescan should search again rather than
+        // being stuck with the earlier not-found result.
+        final albumDir = await createAlbum('Album', ['01.mp3']);
+        fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(
+            albumArtist: 'Artist', albumTitle: 'Wrong Title');
+        fakeMusicBrainz.artPathToReturn = null;
+        await service.syncLibrary(tempRoot.path); // first scan finds nothing
+        expect((await dbService.loadRelease(albumDir.path))!['art_path'], null);
+
+        fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(
+            albumArtist: 'Artist', albumTitle: 'Correct Title');
+        fakeMusicBrainz.artPathToReturn = '${albumDir.path}/cover.jpg';
+        await service.rescanRelease(albumDir.path);
+
+        expect((await dbService.loadRelease(albumDir.path))!['art_path'],
+            '${albumDir.path}/cover.jpg');
+      });
+
+      test('downloads and evicts the first track again', () async {
+        final albumDir = await createAlbum('Album', ['01.mp3']);
+        await service.syncLibrary(tempRoot.path);
+        fakeBookmarks.downloadFileCalls.clear();
+        fakeBookmarks.evictFileCalls.clear();
+
+        await service.rescanRelease(albumDir.path);
+
+        expect(fakeBookmarks.downloadFileCalls, ['${albumDir.path}/01.mp3']);
+        expect(fakeBookmarks.evictFileCalls, ['${albumDir.path}/01.mp3']);
+      });
+
+      test('leaves first_track_scanned set', () async {
+        final albumDir = await createAlbum('Album', ['01.mp3']);
+        await service.syncLibrary(tempRoot.path);
+
+        await service.rescanRelease(albumDir.path);
+
+        expect((await dbService.loadRelease(albumDir.path))!['first_track_scanned'],
+            1);
+      });
+    });
+
     group('combined', () {
       test(
           'adds, removes, retries, and leaves unchanged releases in a single call',

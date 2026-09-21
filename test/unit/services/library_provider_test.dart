@@ -679,6 +679,74 @@ void main() {
     });
   });
 
+  group('rescanRelease', () {
+    test('calls the service with the release\'s folder path', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        Release(
+            folderPath: '/music/Album',
+            name: 'Album',
+            tracks: const [],
+            tags: const []),
+      ];
+      await provider.init();
+
+      await provider.rescanRelease(provider.allReleases.first);
+
+      expect(fakeService.lastRescannedFolderPath, '/music/Album');
+      expect(fakeService.rescanReleaseCallCount, 1);
+    });
+
+    test('reloads the release with whatever the rescan produced', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        Release(
+          folderPath: '/music/Album',
+          name: 'Album',
+          tracks: const [],
+          tags: const [],
+        ),
+      ];
+      await provider.init();
+
+      fakeService.releasesToReturn = [
+        Release(
+          folderPath: '/music/Album',
+          name: 'Corrected Artist - Corrected Title',
+          tracks: const [],
+          tags: const [],
+          artPath: '/music/Album/cover.jpg',
+          albumArtist: 'Corrected Artist',
+          albumTitle: 'Corrected Title',
+        ),
+      ];
+
+      await provider.rescanRelease(provider.allReleases.first);
+
+      final updated = provider.allReleases.first;
+      expect(updated.name, 'Corrected Artist - Corrected Title');
+      expect(updated.artPath, '/music/Album/cover.jpg');
+    });
+
+    test('notifies listeners', () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [
+        Release(
+            folderPath: '/music/Album',
+            name: 'Album',
+            tracks: const [],
+            tags: const []),
+      ];
+      await provider.init();
+
+      int notifyCount = 0;
+      provider.addListener(() => notifyCount++);
+      await provider.rescanRelease(provider.allReleases.first);
+
+      expect(notifyCount, greaterThan(0));
+    });
+  });
+
   group('loading state', () {
     test('is true during load and false after', () async {
       fakeService.rootToReturn = '/music';

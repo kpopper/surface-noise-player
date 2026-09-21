@@ -37,6 +37,8 @@ class FakeLibraryService implements LibraryService {
   int artRetryCallCount = 0;
   String? artRetryResult;
   int retryMissingArtworkCallCount = 0;
+  String? lastRescannedFolderPath;
+  int rescanReleaseCallCount = 0;
 
   @override
   Future<String?> getSavedRoot() async => rootToReturn;
@@ -103,5 +105,11 @@ class FakeLibraryService implements LibraryService {
     void Function()? onProgress,
   }) async {
     retryMissingArtworkCallCount++;
+  }
+
+  @override
+  Future<void> rescanRelease(String folderPath) async {
+    rescanReleaseCallCount++;
+    lastRescannedFolderPath = folderPath;
   }
 }

@@ -356,6 +356,87 @@ void main() {
     expect(artPath, isNotNull);
   });
 
+  test(
+      'prefers an Album release-group over a same-titled single or EP by '
+      'the same artist', () async {
+    // Regression: Clinic released a 7" single titled "Walking With Thee" a
+    // week ahead of the album of the same name — both share the exact
+    // title, so the earliest-date tiebreak alone picked the single's
+    // release-group, which the Cover Art Archive has no scan for, over the
+    // album's, which does.
+    const singleGroupId = 'walking-with-thee-single';
+    const albumGroupId = 'walking-with-thee-album';
+    final searchResponse = jsonEncode({
+      'releases': [
+        {
+          'title': 'Walking With Thee',
+          'date': '2002-02-18', // earlier than the album
+          'release-group': {'id': singleGroupId, 'primary-type': 'Single'},
+        },
+        {
+          'title': 'Walking With Thee',
+          'date': '2002-02-25',
+          'release-group': {'id': albumGroupId, 'primary-type': 'Album'},
+        },
+      ],
+    });
+
+    final client = MockClient((request) async {
+      if (request.url.host == 'musicbrainz.org') {
+        return http.Response(searchResponse, 200);
+      }
+      if (request.url.host == 'coverartarchive.org') {
+        expect(request.url.path, '/release-group/$albumGroupId/front-1200');
+        return http.Response.bytes([1, 2, 3], 200);
+      }
+      throw StateError('Unexpected request to ${request.url}');
+    });
+
+    final service = MusicBrainzService.forTest(client);
+    final artPath = await service.fetchArtwork(
+      albumArtist: 'Clinic',
+      albumTitle: 'Walking With Thee',
+      folderPath: tempDir.path,
+    );
+
+    expect(artPath, isNotNull);
+  });
+
+  test(
+      'falls back to the earliest date among all candidates when none is '
+      'typed as an Album', () async {
+    const epGroupId = 'some-ep';
+    final searchResponse = jsonEncode({
+      'releases': [
+        {
+          'title': 'Some EP',
+          'date': '1999-01-01',
+          'release-group': {'id': epGroupId, 'primary-type': 'EP'},
+        },
+      ],
+    });
+
+    final client = MockClient((request) async {
+      if (request.url.host == 'musicbrainz.org') {
+        return http.Response(searchResponse, 200);
+      }
+      if (request.url.host == 'coverartarchive.org') {
+        expect(request.url.path, '/release-group/$epGroupId/front-1200');
+        return http.Response.bytes([1, 2, 3], 200);
+      }
+      throw StateError('Unexpected request to ${request.url}');
+    });
+
+    final service = MusicBrainzService.forTest(client);
+    final artPath = await service.fetchArtwork(
+      albumArtist: 'Some Artist',
+      albumTitle: 'Some EP',
+      folderPath: tempDir.path,
+    );
+
+    expect(artPath, isNotNull);
+  });
+
   test('queries with an explicit AND between artist and release clauses',
       () async {
     Uri? capturedUri;
