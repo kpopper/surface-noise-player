@@ -1,54 +1,80 @@
 import 'dart:async';
 
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart';
 import '../models/release.dart';
 import 'abstract_player_service.dart';
 import 'bookmark_service.dart';
+import 'metadata_service.dart';
 
 class PlayerService implements AbstractPlayerService {
   static PlayerService? _instance;
   static PlayerService get instance => _instance ??= PlayerService._();
 
-  // Bounds how many consecutive mid-playback failures just_audio will
-  // auto-skip past before giving up and pausing, so a systemic failure can't
-  // trigger an unbroken skip storm. Kept as a fallback for tracks that pass
-  // the availability check but still fail to decode; unavailable tracks are
-  // now filtered out before ever being queued (see playRelease), since a
-  // failed auto-advance into an evicted iCloud placeholder isn't reliably
-  // reported back to Flutter.
-  static const int _maxConsecutiveSkips = 10;
+  // How often to re-check availability while waiting for a track to
+  // download, and how long to wait before giving up and skipping it.
+  static const _downloadPollInterval = Duration(seconds: 1);
+  static const _downloadTimeout = Duration(minutes: 10);
 
-  final AudioPlayer player = AudioPlayer(maxSkipsOnError: _maxConsecutiveSkips);
+  // How often to check the rest of the release for tracks that have
+  // finished downloading in the background and still need their metadata
+  // read, while something in the queue is still unread.
+  static const _backgroundMetadataPollInterval = Duration(seconds: 3);
+
+  final AudioPlayer player = AudioPlayer();
   final BookmarkService _bookmarks;
+  final MetadataService _metadata;
   final _errorMessageController = StreamController<String>.broadcast();
+  final _waitingController = StreamController<bool>.broadcast();
+  final _trackMetadataUpdatedController =
+      StreamController<({String folderPath, Track track})>.broadcast();
   StreamSubscription<PlayerException>? _errorStreamSub;
   StreamSubscription<ProcessingState>? _processingStateSub;
 
-  // The tracks actually handed to just_audio for the current queue, in
-  // sequence order — a subset of currentRelease.tracks with unavailable
-  // files filtered out, so sequence indices line up with this list, not with
-  // currentRelease.tracks.
-  List<Track> _loadedTracks = [];
+  // The release's full track list, in release order — the queue we step
+  // through one track at a time. Unlike the old model, this is not filtered
+  // down to only the tracks that were available when playback started.
+  List<Track> _queue = [];
+  int _currentIndex = -1;
 
-  // Set while playRelease's/_seekWithFallback's own loop is reporting
-  // failures, so the errorStream/processingState listeners below don't also
-  // report or act on the same failure a second time.
+  // Incremented on every call to _playAtIndex; lets an in-flight download
+  // wait or load bail out cleanly if superseded by a newer one (skip tapped
+  // mid-load, etc.) instead of acting on stale state.
+  int _loadRequestId = 0;
+
+  bool _waiting = false;
+
+  // Watches the rest of the current release for tracks that finish
+  // downloading in the background (the whole-folder request fired in
+  // _playAtIndex) and reads their metadata too, not just the one actually
+  // playing. Cancels itself once every track in the queue has been read.
+  Timer? _backgroundMetadataTimer;
+
+  // Set while _playAtIndex's own setAudioSource/play call is in flight, so
+  // the errorStream/processingState listeners below don't also react to a
+  // failure or completion this same call already handled.
   bool _manualLoadInProgress = false;
   DateTime? _lastErrorEmitAt;
 
-  PlayerService._([BookmarkService? bookmarks])
-      : _bookmarks = bookmarks ?? BookmarkService.instance {
+  PlayerService._([BookmarkService? bookmarks, MetadataService? metadata])
+      : _bookmarks = bookmarks ?? BookmarkService.instance,
+        _metadata = metadata ?? MetadataService.instance {
     _errorStreamSub = player.errorStream.listen(_handleMidPlaybackError);
     _processingStateSub = player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed && !_manualLoadInProgress) {
-        _stopPlayback();
+        unawaited(_advanceOrStop(_currentIndex));
       }
     });
   }
 
   @override
   Release? currentRelease;
+
+  @override
+  Track? get currentTrack =>
+      (_currentIndex >= 0 && _currentIndex < _queue.length)
+          ? _queue[_currentIndex]
+          : null;
 
   @override
   Stream<SequenceState?> get sequenceStateStream => player.sequenceStateStream;
@@ -61,13 +87,20 @@ class PlayerService implements AbstractPlayerService {
   @override
   Stream<String> get errorMessageStream => _errorMessageController.stream;
   @override
-  bool get hasPrevious => player.hasPrevious;
+  bool get isWaitingForDownload => _waiting;
   @override
-  bool get hasNext => player.hasNext;
+  Stream<bool> get waitingForDownloadStream => _waitingController.stream;
   @override
-  Future<void> seekToPrevious() => _seekWithFallback(-1);
+  Stream<({String folderPath, Track track})> get trackMetadataUpdatedStream =>
+      _trackMetadataUpdatedController.stream;
   @override
-  Future<void> seekToNext() => _seekWithFallback(1);
+  bool get hasPrevious => _currentIndex > 0;
+  @override
+  bool get hasNext => _currentIndex >= 0 && _currentIndex < _queue.length - 1;
+  @override
+  Future<void> seekToPrevious() => _playAtIndex(_currentIndex - 1);
+  @override
+  Future<void> seekToNext() => _playAtIndex(_currentIndex + 1);
   @override
   Future<void> seek(Duration position) => player.seek(position);
   @override
@@ -77,125 +110,194 @@ class PlayerService implements AbstractPlayerService {
 
   @override
   Future<void> playRelease(Release release, {int trackIndex = 0}) async {
-    currentRelease = release;
-    // The queue always spans the whole release (not just trackIndex onward)
-    // so skip previous/next reflects the release's track order rather than
-    // play history — you can skip back to an earlier track even if it was
-    // never played this session. Availability is already shown visually in
-    // the release screen (greyed out, untappable), so skipped tracks here
-    // aren't individually announced — only the "nothing at all to play" case
-    // gets a message.
-    final playable = <Track>[];
-    var initialIndex = 0;
-    for (var i = 0; i < release.tracks.length; i++) {
-      final track = release.tracks[i];
-      if (await _bookmarks.isFileAvailable(track.path)) {
-        if (i < trackIndex) initialIndex++;
-        playable.add(track);
-      }
-    }
-    if (playable.isEmpty) {
+    if (release.tracks.isEmpty) {
       _emitErrorMessage(null);
       await _stopPlayback();
       return;
     }
-    initialIndex = initialIndex.clamp(0, playable.length - 1);
-    _loadedTracks = playable;
-    final sources = _buildSources(release, playable);
-    _manualLoadInProgress = true;
-    try {
-      for (var index = initialIndex; index < playable.length; index++) {
-        try {
-          await player.setAudioSources(sources, initialIndex: index);
-          // player.play()'s Future only resolves when playback later
-          // finishes/pauses/stops, not when it starts — must not be awaited
-          // here, or _manualLoadInProgress would stay true (suppressing the
-          // completed/error listeners below) for the whole song.
-          unawaited(player.play());
-          return;
-        } on PlayerInterruptedException {
-          // A newer playRelease/playTrack call superseded this one mid-load.
-          return;
-        } on PlayerException {
-          _emitErrorMessage(playable[index].title);
-        }
-      }
-      // Every candidate track failed to load despite existing on disk (e.g.
-      // corrupt file); nothing to play, so stop and clear.
-      await _stopPlayback();
-    } finally {
-      _manualLoadInProgress = false;
-    }
+    currentRelease = release;
+    _queue = release.tracks;
+    _startBackgroundMetadataWatch();
+    await _playAtIndex(trackIndex.clamp(0, _queue.length - 1));
   }
 
   @override
   Future<void> playTrack(Release release, int trackIndex) =>
       playRelease(release, trackIndex: trackIndex);
 
-  // Manual seek to a specific step direction, cascading forward/backward
-  // through the loaded tracklist on failure. Needed because a direct
-  // player.seekToNext()/seekToPrevious() call can throw synchronously for an
-  // unplayable target (unlike the "spontaneous" mid-sequence failures that
-  // surface via player.errorStream and are handled by _handleMidPlaybackError).
-  Future<void> _seekWithFallback(int step) async {
-    final tracks = _loadedTracks;
-    final total = tracks.length;
-    var index = (player.currentIndex ?? 0) + step;
-    if (total == 0 || index < 0 || index >= total) return;
+  // Loads and plays a single track from the queue, requesting a download and
+  // waiting (with a visible spinner) if it isn't locally available yet.
+  // Every call gets a fresh requestId; a call whose id no longer matches
+  // _loadRequestId by the time an await returns has been superseded by a
+  // later call and abandons its work without touching shared state.
+  Future<void> _playAtIndex(int index) async {
+    if (index < 0 || index >= _queue.length) return;
+    _currentIndex = index;
+    final requestId = ++_loadRequestId;
+    _setWaiting(false); // clear a stale spinner left by a superseded call
+    final track = _queue[index];
+
+    // Every play action requests the whole release, not just this track —
+    // even if this track is already available, the rest of the release
+    // should still keep downloading in the background.
+    unawaited(_bookmarks.downloadRelease(currentRelease!.folderPath));
+
+    if (!await _bookmarks.isFileAvailable(track.path)) {
+      if (requestId != _loadRequestId) return;
+      unawaited(_bookmarks.downloadFile(track.path));
+      _setWaiting(true);
+      final available = await _waitForAvailability(track.path, requestId);
+      if (requestId != _loadRequestId) return;
+      _setWaiting(false);
+      if (!available) {
+        _emitErrorMessage(track.title);
+        await _advanceOrStop(index);
+        return;
+      }
+    }
+
+    if (requestId != _loadRequestId) return;
+    final trackToPlay = await _ensureMetadataRead(track);
+    if (requestId != _loadRequestId) return;
+    _queue[index] = trackToPlay;
+
     _manualLoadInProgress = true;
     try {
-      while (index >= 0 && index < total) {
-        try {
-          await player.seek(Duration.zero, index: index);
-          // See the comment in playRelease — must not await play() here.
-          unawaited(player.play());
-          return;
-        } on PlayerInterruptedException {
-          return;
-        } on Exception {
-          _emitErrorMessage(tracks[index].title);
-          index += step;
-        }
+      await player.setAudioSource(_buildSource(trackToPlay));
+      if (requestId != _loadRequestId) return;
+      // player.play()'s Future only resolves when playback later
+      // finishes/pauses/stops, not when it starts — must not be awaited
+      // here, or _manualLoadInProgress would stay true (suppressing the
+      // completed/error listeners below) for the whole song.
+      unawaited(player.play());
+    } on PlayerInterruptedException {
+      // A newer _playAtIndex call superseded this one mid-load.
+    } on PlayerException {
+      if (requestId == _loadRequestId) {
+        _emitErrorMessage(trackToPlay.title);
+        await _advanceOrStop(index);
       }
-      await _stopPlayback();
     } finally {
       _manualLoadInProgress = false;
     }
   }
 
-  List<AudioSource> _buildSources(Release release, List<Track> tracks) =>
-      tracks
-          .map((t) => AudioSource.uri(
-                Uri.file(t.path),
-                tag: MediaItem(
-                  id: t.path,
-                  title: t.title,
-                  artist: t.artist ?? release.albumArtist,
-                  album: release.albumTitle ?? release.name,
-                  artUri: release.artPath != null
-                      ? Uri.file(release.artPath!)
-                      : null,
-                ),
-              ))
-          .toList();
+  // The first time a track is confirmed locally available, reads its real
+  // (file-tag) metadata and reports it via trackMetadataUpdatedStream so a
+  // listener (AppShell) can persist it — the title shown from the very
+  // start of playback is then the corrected one, not the filename-derived
+  // guess. A track whose metadata was already read is returned unchanged.
+  Future<Track> _ensureMetadataRead(Track track) async {
+    if (track.metadataRead) return track;
+    return _readAndPersistMetadata(track);
+  }
+
+  Future<Track> _readAndPersistMetadata(Track track) async {
+    final meta = await _metadata.readMetadata(track.path);
+    final updated = Track(
+      path: track.path,
+      title: meta.title?.isNotEmpty == true ? meta.title! : track.title,
+      trackNumber: meta.trackNumber ?? track.trackNumber,
+      artist: meta.artist?.isNotEmpty == true ? meta.artist : track.artist,
+      metadataRead: true,
+    );
+    _trackMetadataUpdatedController
+        .add((folderPath: currentRelease!.folderPath, track: updated));
+    return updated;
+  }
+
+  void _startBackgroundMetadataWatch() {
+    _backgroundMetadataTimer?.cancel();
+    _backgroundMetadataTimer = Timer.periodic(
+        _backgroundMetadataPollInterval, (_) => _scanForBackgroundMetadata());
+  }
+
+  void _stopBackgroundMetadataWatch() {
+    _backgroundMetadataTimer?.cancel();
+    _backgroundMetadataTimer = null;
+  }
+
+  // Checks every track in the current queue other than the one actually
+  // playing (which _playAtIndex already handles) for ones that have become
+  // available since the last check and still need their metadata read —
+  // lets the rest of the release correct itself from filename guesses as
+  // the whole-folder download progresses, not just the track being played.
+  Future<void> _scanForBackgroundMetadata() async {
+    final release = currentRelease;
+    if (release == null) {
+      _stopBackgroundMetadataWatch();
+      return;
+    }
+    var allRead = true;
+    for (var i = 0; i < _queue.length; i++) {
+      final track = _queue[i];
+      if (track.metadataRead) continue;
+      if (i == _currentIndex) {
+        allRead = false;
+        continue;
+      }
+      if (!await _bookmarks.isFileAvailable(track.path)) {
+        allRead = false;
+        continue;
+      }
+      if (currentRelease != release) return; // release changed mid-scan
+      _queue[i] = await _readAndPersistMetadata(track);
+    }
+    if (allRead && currentRelease == release) _stopBackgroundMetadataWatch();
+  }
+
+  Future<void> _advanceOrStop(int fromIndex) async {
+    final next = fromIndex + 1;
+    if (next >= _queue.length) {
+      await _stopPlayback();
+    } else {
+      await _playAtIndex(next);
+    }
+  }
+
+  Future<bool> _waitForAvailability(String path, int requestId) async {
+    final deadline = DateTime.now().add(_downloadTimeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (requestId != _loadRequestId) return false;
+      if (await _bookmarks.isFileAvailable(path)) return true;
+      await Future.delayed(_downloadPollInterval);
+    }
+    return false;
+  }
+
+  void _setWaiting(bool value) {
+    if (_waiting == value) return;
+    _waiting = value;
+    _waitingController.add(value);
+  }
+
+  AudioSource _buildSource(Track track) => AudioSource.uri(
+        Uri.file(track.path),
+        tag: MediaItem(
+          id: track.path,
+          title: track.title,
+          artist: track.artist ?? currentRelease?.albumArtist,
+          album: currentRelease?.albumTitle ?? currentRelease?.name,
+          artUri: currentRelease?.artPath != null
+              ? Uri.file(currentRelease!.artPath!)
+              : null,
+        ),
+      );
 
   void _handleMidPlaybackError(PlayerException error) {
     if (_manualLoadInProgress) return;
     final now = DateTime.now();
     if (_lastErrorEmitAt != null &&
-        now.difference(_lastErrorEmitAt!) < const Duration(milliseconds: 1500)) {
+        now.difference(_lastErrorEmitAt!) <
+            const Duration(milliseconds: 1500)) {
       return;
     }
     _lastErrorEmitAt = now;
-    _errorMessageController.add(_friendlyMessage(_trackTitleForIndex(error.index)));
-    if (_isLastTrackIndex(error.index)) {
-      _stopPlayback();
-    }
-  }
-
-  bool _isLastTrackIndex(int? index) {
-    if (_loadedTracks.isEmpty || index == null) return !player.hasNext;
-    return index >= _loadedTracks.length - 1;
+    final title = (_currentIndex >= 0 && _currentIndex < _queue.length)
+        ? _queue[_currentIndex].title
+        : null;
+    _errorMessageController.add(_friendlyMessage(title));
+    unawaited(_advanceOrStop(_currentIndex));
   }
 
   void _emitErrorMessage(String? title) {
@@ -205,7 +307,11 @@ class PlayerService implements AbstractPlayerService {
 
   Future<void> _stopPlayback() async {
     currentRelease = null;
-    _loadedTracks = [];
+    _queue = [];
+    _currentIndex = -1;
+    ++_loadRequestId;
+    _setWaiting(false);
+    _stopBackgroundMetadataWatch();
     await player.pause();
     await player.clearAudioSources();
   }
@@ -214,17 +320,13 @@ class PlayerService implements AbstractPlayerService {
       ? "Couldn't play track — check it's downloaded from iCloud."
       : "Couldn't play '$title' — check it's downloaded from iCloud.";
 
-  String? _trackTitleForIndex(int? index) {
-    if (index == null || index < 0 || index >= _loadedTracks.length) {
-      return null;
-    }
-    return _loadedTracks[index].title;
-  }
-
   void dispose() {
     _errorStreamSub?.cancel();
     _processingStateSub?.cancel();
+    _backgroundMetadataTimer?.cancel();
     _errorMessageController.close();
+    _waitingController.close();
+    _trackMetadataUpdatedController.close();
     player.dispose();
   }
 }

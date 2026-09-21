@@ -1,25 +1,33 @@
 import 'dart:async';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/abstract_player_service.dart';
 
 class FakePlayerService implements AbstractPlayerService {
-  final _sequenceStateController =
-      StreamController<SequenceState?>.broadcast();
+  final _sequenceStateController = StreamController<SequenceState?>.broadcast();
   final _playerStateController = StreamController<PlayerState>.broadcast();
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration?>.broadcast();
   final _errorMessageController = StreamController<String>.broadcast();
+  final _waitingController = StreamController<bool>.broadcast();
+  final _trackMetadataUpdatedController =
+      StreamController<({String folderPath, Track track})>.broadcast();
 
   @override
   Release? currentRelease;
+
+  @override
+  Track? currentTrack;
 
   @override
   bool hasPrevious = false;
 
   @override
   bool hasNext = false;
+
+  @override
+  bool isWaitingForDownload = false;
 
   // Recorded calls
   bool playCalled = false;
@@ -45,6 +53,13 @@ class FakePlayerService implements AbstractPlayerService {
   Stream<String> get errorMessageStream => _errorMessageController.stream;
 
   @override
+  Stream<bool> get waitingForDownloadStream => _waitingController.stream;
+
+  @override
+  Stream<({String folderPath, Track track})> get trackMetadataUpdatedStream =>
+      _trackMetadataUpdatedController.stream;
+
+  @override
   Future<void> play() async => playCalled = true;
 
   @override
@@ -62,6 +77,8 @@ class FakePlayerService implements AbstractPlayerService {
   @override
   Future<void> playRelease(Release release, {int trackIndex = 0}) async {
     currentRelease = release;
+    currentTrack =
+        release.tracks.isNotEmpty ? release.tracks[trackIndex] : null;
     lastPlayedRelease = release;
     lastPlayedTrackIndex = trackIndex;
   }
@@ -97,11 +114,22 @@ class FakePlayerService implements AbstractPlayerService {
     _errorMessageController.add(message);
   }
 
+  void emitWaitingForDownload(bool waiting) {
+    isWaitingForDownload = waiting;
+    _waitingController.add(waiting);
+  }
+
+  void emitTrackMetadataUpdate(String folderPath, Track track) {
+    _trackMetadataUpdatedController.add((folderPath: folderPath, track: track));
+  }
+
   void dispose() {
     _sequenceStateController.close();
     _playerStateController.close();
     _positionController.close();
     _durationController.close();
     _errorMessageController.close();
+    _waitingController.close();
+    _trackMetadataUpdatedController.close();
   }
 }

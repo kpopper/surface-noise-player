@@ -6,7 +6,8 @@ import 'package:surface_noise_player/widgets/tag_chip.dart';
 import 'package:surface_noise_player/widgets/tag_filter_bar.dart';
 import '../../helpers/fake_library_service.dart';
 
-Widget wrapWithProvider(LibraryProvider provider) => ChangeNotifierProvider<LibraryProvider>.value(
+Widget wrapWithProvider(LibraryProvider provider) =>
+    ChangeNotifierProvider<LibraryProvider>.value(
       value: provider,
       child: const MaterialApp(home: Scaffold(body: TagFilterBar())),
     );
@@ -47,7 +48,8 @@ void main() {
     expect(find.text('Clear'), findsOneWidget);
   });
 
-  testWidgets('does not show Clear chip when no tags are active', (tester) async {
+  testWidgets('does not show Clear chip when no tags are active',
+      (tester) async {
     final provider = await buildProvider(tags: ['jazz']);
     await tester.pumpWidget(wrapWithProvider(provider));
     await tester.pump();

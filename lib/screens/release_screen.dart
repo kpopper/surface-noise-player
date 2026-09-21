@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:provider/provider.dart';
 import '../models/release.dart';
 import '../services/abstract_player_service.dart';
@@ -26,58 +28,122 @@ class ReleaseScreen extends StatefulWidget {
 }
 
 class _ReleaseScreenState extends State<ReleaseScreen> {
-  late Release _release;
   late AbstractPlayerService _playerSvc;
   late BookmarkService _bookmarks;
   final _tagController = TextEditingController();
   Set<String> _unavailablePaths = {};
+  List<String> _lastCheckedTrackPaths = [];
+  bool _closing = false;
+  bool _rescanning = false;
+
+  // Availability isn't part of the database — it's a live iCloud filesystem
+  // property that can change in the background, independently of anything
+  // LibraryProvider would notify about. Keeps running for as long as this
+  // screen stays open, even once every track currently looks available:
+  // eviction (see LibraryService) is only a request to iOS, which decides
+  // if and when to actually reclaim the local copy — often not immediately,
+  // especially right after this same process just read the file — so a
+  // track can flip back to unavailable at any time with no signal we'd
+  // otherwise catch. isFileAvailable is a cheap local filesystem check, not
+  // a network call, so polling it continuously while one screen is open is
+  // inexpensive.
+  Timer? _availabilityPollTimer;
 
   @override
   void initState() {
     super.initState();
-    _release = widget.release;
     _playerSvc = widget.playerService ?? PlayerService.instance;
     _bookmarks = widget.bookmarkService ?? BookmarkService.instance;
-    _loadAvailability();
+    // A single on-demand retry, not repeated while this screen stays open —
+    // see LibraryProvider.retryArtworkIfMissing.
+    if (widget.release.artPath == null) {
+      unawaited(context
+          .read<LibraryProvider>()
+          .retryArtworkIfMissing(widget.release));
+    }
   }
 
-  Future<void> _loadAvailability() async {
+  // Re-checks availability whenever the live track list actually changes
+  // (a new track appears, one goes away) rather than on every rebuild.
+  void _maybeReloadAvailability(Release release) {
+    final currentPaths = release.tracks.map((t) => t.path).toList();
+    if (listEquals(currentPaths, _lastCheckedTrackPaths)) return;
+    _lastCheckedTrackPaths = currentPaths;
+    _loadAvailability(release);
+  }
+
+  Future<void> _loadAvailability(Release release) async {
     final results = await Future.wait(
-      _release.tracks.map((t) => _bookmarks.isFileAvailable(t.path)),
+      release.tracks.map((t) => _bookmarks.isFileAvailable(t.path)),
     );
     if (!mounted) return;
     setState(() {
       _unavailablePaths = {
-        for (var i = 0; i < _release.tracks.length; i++)
-          if (!results[i]) _release.tracks[i].path,
+        for (var i = 0; i < release.tracks.length; i++)
+          if (!results[i]) release.tracks[i].path,
       };
+    });
+    _availabilityPollTimer ??=
+        Timer.periodic(const Duration(seconds: 2), (_) => _pollAvailability());
+  }
+
+  void _pollAvailability() {
+    if (!mounted) return;
+    final matches = context
+        .read<LibraryProvider>()
+        .allReleases
+        .where((r) => r.folderPath == widget.release.folderPath);
+    if (matches.isEmpty) {
+      return; // release vanished; build()'s auto-close handles this
+    }
+    _loadAvailability(matches.first);
+  }
+
+  // The release is no longer in the library (its folder disappeared in a
+  // sync) — close this screen rather than leave a dead-end view open.
+  // Guarded so a rebuild while still closing doesn't schedule a second pop.
+  void _scheduleClose() {
+    if (_closing) return;
+    _closing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.isCurrent) {
+        Navigator.of(context).pop();
+      }
     });
   }
 
   @override
   void dispose() {
+    _availabilityPollTimer?.cancel();
     _tagController.dispose();
     super.dispose();
   }
 
-  Future<void> _addTag(String tag) async {
+  Future<void> _addTag(Release release, String tag) async {
     if (tag.trim().isEmpty) return;
-    final lib = context.read<LibraryProvider>();
-    await lib.addTagToRelease(_release, tag.trim().toLowerCase());
-    // Refresh local state from provider
-    final updated = lib.allReleases.firstWhere((r) => r.folderPath == _release.folderPath);
-    setState(() => _release = updated);
+    await context
+        .read<LibraryProvider>()
+        .addTagToRelease(release, tag.trim().toLowerCase());
     _tagController.clear();
   }
 
-  Future<void> _removeTag(String tag) async {
-    final lib = context.read<LibraryProvider>();
-    await lib.removeTagFromRelease(_release, tag);
-    final updated = lib.allReleases.firstWhere((r) => r.folderPath == _release.folderPath);
-    setState(() => _release = updated);
+  Future<void> _removeTag(Release release, String tag) async {
+    await context.read<LibraryProvider>().removeTagFromRelease(release, tag);
   }
 
-  void _showAddTagDialog() {
+  Future<void> _rescan(Release release) async {
+    if (_rescanning) return;
+    setState(() => _rescanning = true);
+    try {
+      await context.read<LibraryProvider>().rescanRelease(release);
+    } finally {
+      if (mounted) setState(() => _rescanning = false);
+    }
+  }
+
+  void _showAddTagDialog(Release release) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -88,24 +154,27 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Add tag', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('Add tag',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             FutureBuilder<List<String>>(
               future: context.read<LibraryProvider>().allTags(),
               builder: (context, snap) {
                 final existing = (snap.data ?? [])
-                    .where((t) => !_release.tags.contains(t))
+                    .where((t) => !release.tags.contains(t))
                     .toList();
                 if (existing.isNotEmpty) {
                   return Wrap(
                     spacing: 8,
-                    children: existing.map((t) => ActionChip(
-                      label: Text(t),
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _addTag(t);
-                      },
-                    )).toList(),
+                    children: existing
+                        .map((t) => ActionChip(
+                              label: Text(t),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _addTag(release, t);
+                              },
+                            ))
+                        .toList(),
                   );
                 }
                 return const SizedBox.shrink();
@@ -122,13 +191,13 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                   icon: const Icon(Icons.add),
                   onPressed: () {
                     Navigator.pop(ctx);
-                    _addTag(_tagController.text);
+                    _addTag(release, _tagController.text);
                   },
                 ),
               ),
               onSubmitted: (v) {
                 Navigator.pop(ctx);
-                _addTag(v);
+                _addTag(release, v);
               },
               textCapitalization: TextCapitalization.none,
             ),
@@ -140,96 +209,182 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final lib = context.watch<LibraryProvider>();
+    final matches =
+        lib.allReleases.where((r) => r.folderPath == widget.release.folderPath);
+    final release = matches.isEmpty ? null : matches.first;
+
+    if (release == null) {
+      _scheduleClose();
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.release.name)),
+        body: const SizedBox.shrink(),
+      );
+    }
+
+    _maybeReloadAvailability(release);
+
     return Scaffold(
-      appBar: AppBar(title: Text(_release.name)),
+      appBar: AppBar(
+        title: Text(release.name),
+        actions: [
+          if (_rescanning)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Rescan metadata',
+              onPressed: () => _rescan(release),
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
             child: StreamBuilder<SequenceState?>(
               stream: _playerSvc.sequenceStateStream,
               builder: (context, snap) {
-                final currentPath = snap.data?.currentSource?.tag is MediaItem
-                    ? (snap.data!.currentSource!.tag as MediaItem).id
-                    : null;
-                final isThisRelease = _playerSvc.currentRelease?.folderPath == _release.folderPath;
+                // currentTrack is set as soon as a track is requested, even
+                // before it's downloaded and handed to just_audio — fall
+                // back to it (refreshed via waitingForDownloadStream below)
+                // so the row highlights immediately on tap, not only once
+                // the track actually starts playing.
+                final tag = snap.data?.currentSource?.tag as MediaItem?;
+                final isThisRelease =
+                    _playerSvc.currentRelease?.folderPath == release.folderPath;
 
-                return ListView(
-                  children: [
-                    if (_release.artPath != null)
-                      Image.file(
-                        File(_release.artPath!),
-                        width: double.infinity,
-                        fit: BoxFit.fitWidth,
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 4,
-                              children: [
-                                ..._release.tags.map((t) => TagChip(
-                                  label: t,
-                                  onDeleted: () => _removeTag(t),
-                                )),
-                                ActionChip(
-                                  avatar: const Icon(Icons.add, size: 16),
-                                  label: const Text('Add tag'),
-                                  onPressed: _showAddTagDialog,
-                                ),
-                              ],
-                            ),
+                return StreamBuilder<bool>(
+                  stream: _playerSvc.waitingForDownloadStream,
+                  initialData: _playerSvc.isWaitingForDownload,
+                  builder: (context, waitingSnap) {
+                    final currentPath = tag?.id ??
+                        (isThisRelease ? _playerSvc.currentTrack?.path : null);
+                    final isWaiting = waitingSnap.data ?? false;
+
+                    if (release.tracks.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          'No tracks found yet',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      );
+                    }
+
+                    return ListView(
+                      children: [
+                        if (release.artPath != null)
+                          Image.file(
+                            File(release.artPath!),
+                            // Bypasses Flutter's image cache, which is keyed
+                            // by file path — without this, artwork that gets
+                            // re-resolved at the same path (e.g. cover.jpg
+                            // rewritten after a bad MusicBrainz match is
+                            // cleared and retried) would keep showing
+                            // whatever was cached for that path, not the new
+                            // file's actual bytes.
+                            key: ValueKey(release.artPath),
+                            width: double.infinity,
+                            fit: BoxFit.fitWidth,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink(),
                           ),
-                        ],
-                      ),
-                    ),
-                    const Divider(),
-                    ...List.generate(_release.tracks.length, (i) {
-                      final track = _release.tracks[i];
-                      final isPlaying = isThisRelease && currentPath == track.path;
-                      final isUnavailable = _unavailablePaths.contains(track.path);
-                      final dimColor = Colors.grey[400];
-                      return ListTile(
-                        enabled: !isUnavailable,
-                        leading: isPlaying
-                            ? const Icon(Icons.equalizer, color: Colors.deepOrange)
-                            : Text(
-                                '${track.trackNumber}',
-                                style: TextStyle(color: isUnavailable ? dimColor : Colors.grey),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: [
+                                    ...release.tags.map((t) => TagChip(
+                                          label: t,
+                                          onDeleted: () =>
+                                              _removeTag(release, t),
+                                        )),
+                                    ActionChip(
+                                      avatar: const Icon(Icons.add, size: 16),
+                                      label: const Text('Add tag'),
+                                      onPressed: () =>
+                                          _showAddTagDialog(release),
+                                    ),
+                                  ],
+                                ),
                               ),
-                        title: Text(
-                          track.title,
-                          style: TextStyle(
-                            fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-                            color: isUnavailable ? dimColor : (isPlaying ? Colors.deepOrange : null),
+                            ],
                           ),
                         ),
-                        subtitle: track.artist != null
-                            ? Text(track.artist!,
-                                style: TextStyle(fontSize: 12, color: isUnavailable ? dimColor : null))
-                            : null,
-                        onTap: isUnavailable ? null : () => _playerSvc.playTrack(_release, i),
-                      );
-                    }),
-                  ],
+                        const Divider(),
+                        ...List.generate(release.tracks.length, (i) {
+                          final track = release.tracks[i];
+                          final isPlaying =
+                              isThisRelease && currentPath == track.path;
+                          // Not yet downloaded locally — still tappable; playing it
+                          // triggers a download and waits for it (see PlayerService).
+                          final isUnavailable =
+                              _unavailablePaths.contains(track.path);
+                          return ListTile(
+                            leading: isPlaying && isWaiting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : isPlaying
+                                    ? const Icon(Icons.equalizer,
+                                        color: Colors.deepOrange)
+                                    : isUnavailable
+                                        ? Icon(Icons.cloud_download_outlined,
+                                            color: Colors.grey[500], size: 20)
+                                        : Text('${track.trackNumber}',
+                                            style: const TextStyle(
+                                                color: Colors.grey)),
+                            title: Text(
+                              track.title,
+                              style: TextStyle(
+                                fontWeight: isPlaying
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isPlaying ? Colors.deepOrange : null,
+                              ),
+                            ),
+                            // Always render a subtitle line, even when
+                            // there's no artist yet — otherwise the row's
+                            // height changes (and the whole list jumps)
+                            // right when a track's real metadata arrives
+                            // and it suddenly gains one.
+                            subtitle: Text(track.artist ?? '',
+                                style: const TextStyle(fontSize: 12)),
+                            onTap: () => _playerSvc.playTrack(release, i),
+                          );
+                        }),
+                      ],
+                    );
+                  },
                 );
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: FilledButton.icon(
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Play all'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 48),
+          if (release.tracks.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: FilledButton.icon(
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Play all'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                ),
+                onPressed: () => _playerSvc.playRelease(release),
               ),
-              onPressed: () => _playerSvc.playRelease(_release),
             ),
-          ),
         ],
       ),
     );

@@ -1,46 +1,420 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/screens/release_screen.dart';
+import 'package:surface_noise_player/services/library_provider.dart';
 import '../../helpers/fake_bookmark_service.dart';
+import '../../helpers/fake_library_service.dart';
 import '../../helpers/fake_player_service.dart';
 
+Future<LibraryProvider> makeProvider(FakeLibraryService fakeService) async {
+  final provider = LibraryProvider(fakeService, FakeBookmarkService());
+  await provider.init();
+  return provider;
+}
+
 void main() {
-  testWidgets('unavailable tracks are greyed out and cannot be tapped to play', (tester) async {
-    final release = Release(
-      folderPath: '/music/Test',
-      name: 'Test',
-      tracks: const [
-        Track(path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1),
-        Track(path: '/music/Test/02.mp3', title: 'Track Two', trackNumber: 2),
-      ],
-      tags: const [],
-    );
-    final fakePlayer = FakePlayerService();
-    final fakeBookmarks = FakeBookmarkService()
-      ..unavailablePaths = {'/music/Test/02.mp3'};
+  group('unavailable tracks', () {
+    testWidgets('shows a cloud icon but can still be tapped to play',
+        (tester) async {
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [
+          Track(path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1),
+          Track(path: '/music/Test/02.mp3', title: 'Track Two', trackNumber: 2),
+        ],
+        tags: const [],
+      );
+      final fakePlayer = FakePlayerService();
+      final fakeBookmarks = FakeBookmarkService()
+        ..unavailablePaths = {'/music/Test/02.mp3'};
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
 
-    await tester.pumpWidget(MaterialApp(
-      home: ReleaseScreen(
-        release: release,
-        playerService: fakePlayer,
-        bookmarkService: fakeBookmarks,
-      ),
-    ));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            home: ReleaseScreen(
+              release: release,
+              playerService: fakePlayer,
+              bookmarkService: fakeBookmarks,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    final unavailableTile = tester.widget<ListTile>(
-      find.ancestor(of: find.text('Track Two'), matching: find.byType(ListTile)),
-    );
-    expect(unavailableTile.enabled, isFalse);
-    expect(unavailableTile.onTap, isNull);
+      final unavailableTile = tester.widget<ListTile>(
+        find.ancestor(
+            of: find.text('Track Two'), matching: find.byType(ListTile)),
+      );
+      expect(unavailableTile.enabled, isTrue);
+      expect(unavailableTile.onTap, isNotNull);
+      expect(
+        find.descendant(
+          of: find.byWidget(unavailableTile),
+          matching: find.byIcon(Icons.cloud_download_outlined),
+        ),
+        findsOneWidget,
+      );
 
-    await tester.tap(find.text('Track Two'));
-    await tester.pump();
-    expect(fakePlayer.lastPlayedTrackIndex, isNull);
+      await tester.tap(find.text('Track Two'));
+      await tester.pump();
+      expect(fakePlayer.lastPlayedTrackIndex, 1);
 
-    await tester.tap(find.text('Track One'));
-    await tester.pump();
-    expect(fakePlayer.lastPlayedTrackIndex, 0);
+      await tester.tap(find.text('Track One'));
+      await tester.pump();
+      expect(fakePlayer.lastPlayedTrackIndex, 0);
+    });
+
+    testWidgets(
+        'updates from a cloud icon to the track number once a background download finishes',
+        (tester) async {
+      // Regression: availability was only ever checked once (on open, or
+      // when the track list itself changed) — a track that finished
+      // downloading in the background while a different track played kept
+      // showing a stale cloud icon until something else happened to force
+      // a re-check.
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [
+          Track(path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1),
+        ],
+        tags: const [],
+      );
+      final fakeBookmarks = FakeBookmarkService()
+        ..unavailablePaths = {'/music/Test/01.mp3'};
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            home:
+                ReleaseScreen(release: release, bookmarkService: fakeBookmarks),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
+      expect(find.text('1'), findsNothing);
+
+      // Simulate the download completing in the background (not via any
+      // playback or provider event on this track).
+      fakeBookmarks.unavailablePaths = {};
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+
+      expect(find.byIcon(Icons.cloud_download_outlined), findsNothing);
+      expect(find.text('1'), findsOneWidget);
+    });
+
+    testWidgets(
+        'keeps polling after every track becomes available, so a later '
+        'eviction is still caught', (tester) async {
+      // Regression: eviction (e.g. after a manual rescan, or the on-demand
+      // artwork retry) is only a request to iOS — the system decides if and
+      // when to actually reclaim the local copy, often not immediately,
+      // especially right after this same process just read the file. The
+      // poll used to stop itself the moment everything looked available,
+      // so a track that flipped back to unavailable later (once iOS
+      // actually got around to evicting it) had nothing left watching for
+      // that change, leaving the cloud icon stuck hidden.
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [
+          Track(path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1),
+        ],
+        tags: const [],
+      );
+      final fakeBookmarks = FakeBookmarkService()
+        ..unavailablePaths = {'/music/Test/01.mp3'};
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            home:
+                ReleaseScreen(release: release, bookmarkService: fakeBookmarks),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
+
+      // Becomes available (e.g. downloaded to read its tags) — the poll
+      // should pick this up and, with the old behaviour, would have
+      // stopped itself here.
+      fakeBookmarks.unavailablePaths = {};
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.byIcon(Icons.cloud_download_outlined), findsNothing);
+
+      // iOS only gets around to actually evicting it later.
+      fakeBookmarks.unavailablePaths = {'/music/Test/01.mp3'};
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
+    });
+
+    testWidgets(
+        'reserves subtitle space so row height is the same with or without an artist',
+        (tester) async {
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [
+          Track(path: '/music/Test/01.mp3', title: 'No Artist', trackNumber: 1),
+          Track(
+              path: '/music/Test/02.mp3',
+              title: 'Has Artist',
+              trackNumber: 2,
+              artist: 'Someone'),
+        ],
+        tags: const [],
+      );
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(home: ReleaseScreen(release: release)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final heightWithoutArtist = tester
+          .getSize(find.ancestor(
+              of: find.text('No Artist'), matching: find.byType(ListTile)))
+          .height;
+      final heightWithArtist = tester
+          .getSize(find.ancestor(
+              of: find.text('Has Artist'), matching: find.byType(ListTile)))
+          .height;
+
+      expect(heightWithoutArtist, heightWithArtist);
+    });
+  });
+
+  group('live updates', () {
+    testWidgets('reflects updated release data without remounting',
+        (tester) async {
+      final initial = Release(
+          folderPath: '/music/Test',
+          name: 'Old Name',
+          tracks: const [],
+          tags: const []);
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [initial];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(home: ReleaseScreen(release: initial)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Old Name'), findsOneWidget);
+
+      fakeService.releasesToReturn = [
+        Release(
+            folderPath: '/music/Test',
+            name: 'New Name',
+            tracks: const [],
+            tags: const []),
+      ];
+      await provider.refresh();
+      await tester.pumpAndSettle();
+
+      expect(find.text('New Name'), findsOneWidget);
+      expect(find.text('Old Name'), findsNothing);
+    });
+
+    testWidgets(
+        'hides the track list and Play all button when there are no tracks yet',
+        (tester) async {
+      final release = Release(
+          folderPath: '/music/Test',
+          name: 'Test',
+          tracks: const [],
+          tags: const []);
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(home: ReleaseScreen(release: release)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('No tracks found yet'), findsOneWidget);
+      expect(find.text('Play all'), findsNothing);
+    });
+
+    testWidgets('shows the track list and Play all button once tracks appear',
+        (tester) async {
+      final release = Release(
+          folderPath: '/music/Test',
+          name: 'Test',
+          tracks: const [],
+          tags: const []);
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(home: ReleaseScreen(release: release)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Play all'), findsNothing);
+
+      fakeService.releasesToReturn = [
+        Release(
+          folderPath: '/music/Test',
+          name: 'Test',
+          tracks: const [
+            Track(
+                path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1),
+          ],
+          tags: const [],
+        ),
+      ];
+      await provider.refresh();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Track One'), findsOneWidget);
+      expect(find.text('Play all'), findsOneWidget);
+    });
+  });
+
+  group('artwork retry', () {
+    testWidgets(
+        'opening a release with no artwork triggers a single retry, not repeated on rebuild',
+        (tester) async {
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [],
+        tags: const [],
+      );
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(home: ReleaseScreen(release: release)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakeService.artRetryCallCount, 1);
+
+      await tester.pump(); // a further rebuild should not retry again
+      expect(fakeService.artRetryCallCount, 1);
+    });
+
+    testWidgets('opening a release that already has artwork does not retry',
+        (tester) async {
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [],
+        tags: const [],
+        artPath: '/music/Test/cover.jpg',
+      );
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(home: ReleaseScreen(release: release)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakeService.artRetryCallCount, 0);
+    });
+  });
+
+  group('auto-close', () {
+    testWidgets('closes itself when the release is removed from the library',
+        (tester) async {
+      final release = Release(
+          folderPath: '/music/Test',
+          name: 'Test',
+          tracks: const [],
+          tags: const []);
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => ReleaseScreen(release: release)),
+                    ),
+                    child: const Text('Library'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Test'), findsOneWidget);
+
+      fakeService.releasesToReturn = [];
+      await provider.refresh();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Library'), findsOneWidget); // back on the base screen
+      expect(find.widgetWithText(AppBar, 'Test'), findsNothing);
+    });
   });
 }

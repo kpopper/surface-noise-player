@@ -7,7 +7,8 @@ Widget wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 void main() {
   group('TagChip — deletable mode (onDeleted provided)', () {
     testWidgets('displays the label', (tester) async {
-      await tester.pumpWidget(wrap(const TagChip(label: 'jazz', onDeleted: null)));
+      await tester
+          .pumpWidget(wrap(const TagChip(label: 'jazz', onDeleted: null)));
       // null onDeleted → FilterChip path, still shows label
       expect(find.text('jazz'), findsOneWidget);
     });
@@ -19,7 +20,8 @@ void main() {
 
     testWidgets('calls onDeleted when delete icon is tapped', (tester) async {
       bool deleted = false;
-      await tester.pumpWidget(wrap(TagChip(label: 'jazz', onDeleted: () => deleted = true)));
+      await tester.pumpWidget(
+          wrap(TagChip(label: 'jazz', onDeleted: () => deleted = true)));
       await tester.tap(find.byIcon(Icons.close));
       await tester.pump();
       expect(deleted, isTrue);
@@ -34,7 +36,8 @@ void main() {
 
     testWidgets('calls onTap when tapped', (tester) async {
       bool tapped = false;
-      await tester.pumpWidget(wrap(TagChip(label: 'rock', onTap: () => tapped = true)));
+      await tester
+          .pumpWidget(wrap(TagChip(label: 'rock', onTap: () => tapped = true)));
       await tester.tap(find.text('rock'));
       await tester.pump();
       expect(tapped, isTrue);

@@ -1,14 +1,18 @@
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 import 'screens/app_shell.dart';
+import 'services/audio_handler.dart';
 import 'services/library_provider.dart';
 
 Future<void> main() async {
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.yourname.surface_noise_player.audio',
-    androidNotificationChannelName: 'Surface Noise Player',
-    androidNotificationOngoing: true,
+  await AudioService.init(
+    builder: () => SurfaceNoiseAudioHandler(),
+    config: const AudioServiceConfig(
+      androidNotificationChannelId: 'com.yourname.surface_noise_player.audio',
+      androidNotificationChannelName: 'Surface Noise Player',
+      androidNotificationOngoing: true,
+    ),
   );
   runApp(
     ChangeNotifierProvider(

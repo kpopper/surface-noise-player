@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart';
 import '../services/abstract_player_service.dart';
 import '../services/player_service.dart';
 import '../widgets/art_thumbnail.dart';
@@ -59,133 +59,182 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
+      // Both stream builders are kept unconditionally in the tree (neither
+      // short-circuits to a hidden widget on its own) so each stays mounted
+      // and subscribed regardless of which stream fires first — otherwise an
+      // early "nothing to show" return from the outer builder would prevent
+      // the inner one from ever mounting to catch a later event, and this
+      // screen would stay blank when opened during a download wait.
       body: StreamBuilder<SequenceState?>(
         stream: _svc.sequenceStateStream,
         builder: (context, seqSnap) {
-          final tag = seqSnap.data?.currentSource?.tag;
-          if (tag == null) return const SizedBox.shrink();
-          final item = tag as MediaItem;
+          return StreamBuilder<bool>(
+            stream: _svc.waitingForDownloadStream,
+            initialData: _svc.isWaitingForDownload,
+            builder: (context, waitingSnap) {
+              // The loaded MediaItem tag reflects what just_audio actually
+              // has queued; _svc.currentTrack is set as soon as playback is
+              // requested, even before a download-wait completes and a
+              // source is loaded — fall back to it so this screen shows
+              // something immediately when opened during a download wait,
+              // rather than staying blank until just_audio has a source.
+              final tag = seqSnap.data?.currentSource?.tag as MediaItem?;
+              final pendingTrack = _svc.currentTrack;
+              if (tag == null && pendingTrack == null) {
+                return const SizedBox.shrink();
+              }
+              final title = tag?.title ?? pendingTrack!.title;
+              final artist = tag?.artist ??
+                  pendingTrack?.artist ??
+                  _svc.currentRelease?.albumArtist;
+              final album = tag?.album ??
+                  _svc.currentRelease?.albumTitle ??
+                  _svc.currentRelease?.name;
+              final isWaiting = waitingSnap.data ?? false;
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              children: [
-                const SizedBox(height: 8),
-                ArtThumbnail(
-                  artPath: _svc.currentRelease?.artPath,
-                  size: MediaQuery.of(context).size.width - 48,
-                ),
-                const SizedBox(height: 32),
-                Text(
-                  item.title,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                ),
-                if (item.artist != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    item.artist!,
-                    style: TextStyle(fontSize: 16, color: Colors.grey[400]),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-                if (item.album != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    item.album!,
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-                const SizedBox(height: 24),
-                StreamBuilder<Duration?>(
-                  stream: _svc.durationStream,
-                  builder: (context, durSnap) {
-                    final duration = durSnap.data ?? Duration.zero;
-                    return StreamBuilder<Duration>(
-                      stream: _svc.positionStream,
-                      builder: (context, posSnap) {
-                        final position = posSnap.data ?? Duration.zero;
-                        final maxMs = duration.inMilliseconds.toDouble();
-                        final value = (_dragValue ??
-                                position.inMilliseconds
-                                    .clamp(0, duration.inMilliseconds)
-                                    .toDouble())
-                            .clamp(0, maxMs > 0 ? maxMs : 1)
-                            .toDouble();
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    ArtThumbnail(
+                      artPath: _svc.currentRelease?.artPath,
+                      size: MediaQuery.of(context).size.width - 48,
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.bold),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+                    if (artist != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        artist,
+                        style: TextStyle(fontSize: 16, color: Colors.grey[400]),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    if (album != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        album,
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    StreamBuilder<Duration?>(
+                      stream: _svc.durationStream,
+                      builder: (context, durSnap) {
+                        final duration = durSnap.data ?? Duration.zero;
+                        return StreamBuilder<Duration>(
+                          stream: _svc.positionStream,
+                          builder: (context, posSnap) {
+                            final position = posSnap.data ?? Duration.zero;
+                            final maxMs = duration.inMilliseconds.toDouble();
+                            final value = (_dragValue ??
+                                    position.inMilliseconds
+                                        .clamp(0, duration.inMilliseconds)
+                                        .toDouble())
+                                .clamp(0, maxMs > 0 ? maxMs : 1)
+                                .toDouble();
 
-                        return Column(
+                            return Column(
+                              children: [
+                                Slider(
+                                  value: value,
+                                  max: maxMs > 0 ? maxMs : 1,
+                                  onChanged: (v) =>
+                                      setState(() => _dragValue = v),
+                                  onChangeEnd: (v) {
+                                    setState(() => _dragValue = null);
+                                    _svc.seek(
+                                        Duration(milliseconds: v.toInt()));
+                                  },
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(_format(position),
+                                          style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey)),
+                                      Text(_format(duration),
+                                          style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    StreamBuilder<PlayerState>(
+                      stream: _svc.playerStateStream,
+                      builder: (context, stateSnap) {
+                        final state = stateSnap.data;
+                        final playing = (state?.playing ?? false) &&
+                            state?.processingState != ProcessingState.completed;
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Slider(
-                              value: value,
-                              max: maxMs > 0 ? maxMs : 1,
-                              onChanged: (v) => setState(() => _dragValue = v),
-                              onChangeEnd: (v) {
-                                setState(() => _dragValue = null);
-                                _svc.seek(Duration(milliseconds: v.toInt()));
-                              },
+                            IconButton(
+                              iconSize: 40,
+                              icon: const Icon(Icons.skip_previous),
+                              onPressed:
+                                  _svc.hasPrevious ? _svc.seekToPrevious : null,
                             ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(_format(position),
-                                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                  Text(_format(duration),
-                                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                ],
+                            const SizedBox(width: 16),
+                            if (isWaiting)
+                              const SizedBox(
+                                width: 64,
+                                height: 64,
+                                child: Padding(
+                                  padding: EdgeInsets.all(20),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 3),
+                                ),
+                              )
+                            else
+                              FilledButton(
+                                style: FilledButton.styleFrom(
+                                  shape: const CircleBorder(),
+                                  padding: const EdgeInsets.all(16),
+                                ),
+                                onPressed: playing ? _svc.pause : _svc.play,
+                                child: Icon(
+                                  playing ? Icons.pause : Icons.play_arrow,
+                                  size: 36,
+                                ),
                               ),
+                            const SizedBox(width: 16),
+                            IconButton(
+                              iconSize: 40,
+                              icon: const Icon(Icons.skip_next),
+                              onPressed: _svc.hasNext ? _svc.seekToNext : null,
                             ),
                           ],
                         );
                       },
-                    );
-                  },
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                StreamBuilder<PlayerState>(
-                  stream: _svc.playerStateStream,
-                  builder: (context, stateSnap) {
-                    final state = stateSnap.data;
-                    final playing = (state?.playing ?? false) &&
-                        state?.processingState != ProcessingState.completed;
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconButton(
-                          iconSize: 40,
-                          icon: const Icon(Icons.skip_previous),
-                          onPressed: _svc.hasPrevious ? _svc.seekToPrevious : null,
-                        ),
-                        const SizedBox(width: 16),
-                        FilledButton(
-                          style: FilledButton.styleFrom(
-                            shape: const CircleBorder(),
-                            padding: const EdgeInsets.all(16),
-                          ),
-                          onPressed: playing ? _svc.pause : _svc.play,
-                          child: Icon(
-                            playing ? Icons.pause : Icons.play_arrow,
-                            size: 36,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        IconButton(
-                          iconSize: 40,
-                          icon: const Icon(Icons.skip_next),
-                          onPressed: _svc.hasNext ? _svc.seekToNext : null,
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ),
+              );
+            },
           );
         },
       ),

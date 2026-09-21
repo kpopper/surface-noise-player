@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
-import '../models/folder_info.dart';
+import 'package:flutter/painting.dart';
 import '../models/release.dart';
 import 'bookmark_service.dart';
 import 'library_service.dart';
+
+enum LibrarySortMode { recency, alphabetical }
 
 class LibraryProvider extends ChangeNotifier {
   final LibraryService _svc;
@@ -13,32 +16,39 @@ class LibraryProvider extends ChangeNotifier {
 
   List<Release> _releases = [];
   final List<String> _activeTags = [];
+  String _searchQuery = '';
+  LibrarySortMode _sortMode = LibrarySortMode.recency;
   bool loading = false;
   String? rootPath;
 
   List<Release> get releases {
-    if (_activeTags.isEmpty) return _releases;
-    return _releases
-        .where((r) => _activeTags.every((t) => r.tags.contains(t)))
-        .toList();
+    var result = _releases;
+    if (_activeTags.isNotEmpty) {
+      result = result
+          .where((r) => _activeTags.every((t) => r.tags.contains(t)))
+          .toList();
+    }
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      result = result.where((r) => r.name.toLowerCase().contains(q)).toList();
+    }
+    return result;
   }
 
   List<Release> get allReleases => _releases;
   List<String> get activeTags => List.unmodifiable(_activeTags);
+  String get searchQuery => _searchQuery;
+  LibrarySortMode get sortMode => _sortMode;
 
   Future<void> init() async {
     final bookmarkedPath = await _bookmarks.resolveBookmark();
     rootPath = bookmarkedPath ?? await _svc.getSavedRoot();
     if (rootPath != null) {
-      loading = true;
-      notifyListeners();
-      _releases = await _svc.loadSelectedReleases();
-      _sortByActivity(_releases);
-      loading = false;
-      notifyListeners();
-      // Fire-and-forget background tasks.
-      _refreshDownloadState();
-      _refreshArtwork();
+      // Show whatever the database already knows immediately — no need to
+      // wait for a sync just to display releases discovered in a previous
+      // session. The sync then runs as a background refresh on top.
+      await _reloadReleases();
+      await _syncInBackground(rootPath!);
     }
   }
 
@@ -46,108 +56,100 @@ class LibraryProvider extends ChangeNotifier {
     final path = await _svc.pickLibraryFolder();
     if (path != null) {
       rootPath = path;
+      // A different root has nothing already loaded worth showing (picking
+      // it just reset the database), so there's no "known releases" to keep
+      // visible here — unlike init()/refresh() below.
       _releases = [];
       _activeTags.clear();
-      notifyListeners();
+      _searchQuery = '';
+      await _syncInBackground(rootPath!);
     }
   }
 
   Future<void> refresh() async {
     if (rootPath == null) return;
+    await _syncInBackground(rootPath!, retryMissingArt: true);
+  }
+
+  // Syncs the directory with the database, reloading the library as changes
+  // are found so releases appear/disappear progressively rather than only
+  // once the whole sync finishes. Already-loaded releases stay visible (and
+  // tappable) the whole time — `loading` only drives the app bar's spinner,
+  // not the release list.
+  //
+  // retryMissingArt additionally sweeps every fully-scanned release still
+  // missing artwork after the regular sync — only refresh() opts into this
+  // (never init()/pickFolder()), so nothing retries automatically on
+  // launch, only on an explicit refresh tap.
+  Future<void> _syncInBackground(String root,
+      {bool retryMissingArt = false}) async {
     loading = true;
     notifyListeners();
-    for (final release in _releases) {
-      await _svc.rescanRelease(release.folderPath);
+    await _svc.syncLibrary(root, onProgress: _reloadReleases);
+    if (retryMissingArt) {
+      await _svc.retryMissingArtwork(
+        onArtworkResolved: (artPath) =>
+            PaintingBinding.instance.imageCache.evict(FileImage(File(artPath))),
+        onProgress: _reloadReleases,
+      );
     }
-    _releases = await _svc.loadSelectedReleases();
-    _sortByActivity(_releases);
+    await _reloadReleases(); // catch-all, in case the last progress tick raced this
     loading = false;
     notifyListeners();
   }
 
-  Future<List<FolderInfo>> listAllFolders() async {
-    if (rootPath == null) return [];
-    return _svc.listAllFolders(rootPath!);
-  }
+  // syncLibrary's onProgress can fire many times in quick succession (e.g.
+  // several releases finishing concurrently) — coalesce overlapping calls
+  // into a single reload instead of piling up redundant full-library
+  // queries, while still guaranteeing one more reload after the busy one
+  // finishes so the latest state is never missed.
+  bool _reloadInFlight = false;
+  bool _reloadPending = false;
 
-  Future<void> selectRelease(String folderPath) async {
-    // Wait for all files to be locally available before scanning for metadata.
-    final downloaded = await _bookmarks.awaitDownload(folderPath);
-    final release = await _svc.selectRelease(folderPath);
-    if (release == null) return;
-    if (downloaded) {
-      _releases.add(release);
-    } else {
-      _releases.add(release.copyWith(isAvailable: false));
-      // Download timed out — watch in background and mark available when ready.
-      _awaitAndMarkAvailable(folderPath);
+  Future<void> _reloadReleases() async {
+    if (_reloadInFlight) {
+      _reloadPending = true;
+      return;
     }
-    _sortByActivity(_releases);
-    notifyListeners();
-  }
-
-  Future<void> _awaitAndMarkAvailable(String folderPath) async {
-    final downloaded = await _bookmarks.awaitDownload(folderPath);
-    if (!downloaded) return;
-    final index = _releases.indexWhere((r) => r.folderPath == folderPath);
-    if (index < 0) return; // was deselected in the meantime
-    final updated = await _svc.selectRelease(folderPath);
-    if (updated == null) return;
-    _releases[index] = updated;
-    _sortByActivity(_releases);
-    notifyListeners();
-  }
-
-  Future<void> deselectRelease(String folderPath) async {
-    await _svc.deselectRelease(folderPath);
-    await _bookmarks.evictRelease(folderPath);
-    _releases.removeWhere((r) => r.folderPath == folderPath);
-    notifyListeners();
-  }
-
-  Future<void> _refreshArtwork() async {
-    var changed = false;
-    for (var i = 0; i < _releases.length; i++) {
-      if (_releases[i].artPath != null) continue;
-      final artPath = await _svc.refreshArtwork(_releases[i].folderPath);
-      if (artPath != null) {
-        final r = _releases[i];
-        _releases[i] = Release(
-          folderPath: r.folderPath,
-          name: r.name,
-          tracks: r.tracks,
-          tags: r.tags,
-          artPath: artPath,
-          albumTitle: r.albumTitle,
-          albumArtist: r.albumArtist,
-          lastActivityAt: r.lastActivityAt,
-          isAvailable: r.isAvailable,
-        );
-        changed = true;
-      }
-    }
-    if (changed) notifyListeners();
-  }
-
-  Future<void> _refreshDownloadState() async {
-    var changed = false;
-    for (var i = 0; i < _releases.length; i++) {
-      final available = await _bookmarks.downloadRelease(_releases[i].folderPath);
-      if (_releases[i].isAvailable != available) {
-        _releases[i] = _releases[i].copyWith(isAvailable: available);
-        changed = true;
-      }
-    }
-    if (changed) notifyListeners();
+    _reloadInFlight = true;
+    do {
+      _reloadPending = false;
+      _releases = await _svc.loadLibrary();
+      _applySort(_releases);
+      notifyListeners();
+    } while (_reloadPending);
+    _reloadInFlight = false;
   }
 
   Future<void> recordPlay(String folderPath) async {
     await _svc.recordPlay(folderPath);
     final index = _releases.indexWhere((r) => r.folderPath == folderPath);
     if (index >= 0) {
-      _releases[index] = _releases[index].copyWith(lastActivityAt: DateTime.now());
-      _sortByActivity(_releases);
+      _releases[index] =
+          _releases[index].copyWith(lastActivityAt: DateTime.now());
+      // Re-sorting is a no-op in alphabetical mode (it doesn't depend on
+      // activity), but harmless to always call — keeps this one call site
+      // correct regardless of which mode is currently active.
+      _applySort(_releases);
       notifyListeners();
+    }
+  }
+
+  void toggleSortMode() {
+    _sortMode = _sortMode == LibrarySortMode.recency
+        ? LibrarySortMode.alphabetical
+        : LibrarySortMode.recency;
+    _applySort(_releases);
+    notifyListeners();
+  }
+
+  void _applySort(List<Release> releases) {
+    switch (_sortMode) {
+      case LibrarySortMode.recency:
+        _sortByActivity(releases);
+      case LibrarySortMode.alphabetical:
+        releases.sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     }
   }
 
@@ -178,18 +180,26 @@ class LibraryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSearchQuery(String value) {
+    _searchQuery = value;
+    notifyListeners();
+  }
+
   Future<void> addTagToRelease(Release release, String tag) async {
     await _svc.addTag(release.folderPath, tag);
-    final index = _releases.indexWhere((r) => r.folderPath == release.folderPath);
+    final index =
+        _releases.indexWhere((r) => r.folderPath == release.folderPath);
     if (index >= 0) {
-      _releases[index] = _releases[index].copyWith(tags: [..._releases[index].tags, tag]);
+      _releases[index] =
+          _releases[index].copyWith(tags: [..._releases[index].tags, tag]);
       notifyListeners();
     }
   }
 
   Future<void> removeTagFromRelease(Release release, String tag) async {
     await _svc.removeTag(release.folderPath, tag);
-    final index = _releases.indexWhere((r) => r.folderPath == release.folderPath);
+    final index =
+        _releases.indexWhere((r) => r.folderPath == release.folderPath);
     if (index >= 0) {
       _releases[index] = _releases[index].copyWith(
         tags: _releases[index].tags.where((t) => t != tag).toList(),
@@ -199,4 +209,77 @@ class LibraryProvider extends ChangeNotifier {
   }
 
   Future<List<String>> allTags() => _svc.allTags();
+
+  // Persists a track's freshly-read metadata (see PlayerService) and updates
+  // the in-memory copy so a release screen watching this provider reflects
+  // it immediately, without waiting for a sync.
+  Future<void> updateTrackMetadata(String folderPath, Track track) async {
+    await _svc.updateTrackMetadata(track.path,
+        title: track.title,
+        trackNumber: track.trackNumber,
+        artist: track.artist);
+    final index = _releases.indexWhere((r) => r.folderPath == folderPath);
+    if (index < 0) return;
+    final release = _releases[index];
+    final trackIndex = release.tracks.indexWhere((t) => t.path == track.path);
+    if (trackIndex < 0) return;
+    final updatedTracks = [...release.tracks];
+    updatedTracks[trackIndex] = track;
+    _releases[index] = Release(
+      folderPath: release.folderPath,
+      name: release.name,
+      tracks: updatedTracks,
+      tags: release.tags,
+      artPath: release.artPath,
+      albumTitle: release.albumTitle,
+      albumArtist: release.albumArtist,
+      lastActivityAt: release.lastActivityAt,
+    );
+    notifyListeners();
+  }
+
+  // Called once by ReleaseScreen when it opens on a release with no
+  // artwork. No-ops (and doesn't touch the service) if the release already
+  // has art, so it's safe to call defensively. Returns whether artwork was
+  // newly found, so a caller can report success/failure.
+  Future<bool> retryArtworkIfMissing(Release release) async {
+    if (release.artPath != null) return false;
+    final artPath = await _svc.retryArtwork(release.folderPath,
+        albumArtist: release.albumArtist, albumTitle: release.albumTitle);
+    if (artPath == null) return false;
+    // Flutter's image cache is keyed by file path, not content — without
+    // this, a path that was already rendered once this session (e.g. the
+    // same cover.jpg filename, now holding a freshly-resolved image) would
+    // keep showing whatever was cached for that path instead of the new
+    // bytes.
+    PaintingBinding.instance.imageCache.evict(FileImage(File(artPath)));
+    final index =
+        _releases.indexWhere((r) => r.folderPath == release.folderPath);
+    if (index >= 0) {
+      _releases[index] = _releases[index].copyWith(artPath: artPath);
+      notifyListeners();
+    }
+    return true;
+  }
+
+  // Explicit, user-triggered rescan of a release from its release screen —
+  // e.g. after correcting the file tags on disk. Reloads the whole library
+  // afterwards (same as a sync) so the release's name/album title/artist
+  // and artwork pick up whatever the rescan found.
+  Future<void> rescanRelease(Release release) async {
+    final oldArtPath = release.artPath;
+    await _svc.rescanRelease(release.folderPath);
+    await _reloadReleases();
+    final index =
+        _releases.indexWhere((r) => r.folderPath == release.folderPath);
+    final newArtPath = index >= 0 ? _releases[index].artPath : null;
+    // Flutter's image cache is keyed by file path, not content — evict both
+    // the old and new paths so neither keeps showing stale cached bytes.
+    if (oldArtPath != null) {
+      PaintingBinding.instance.imageCache.evict(FileImage(File(oldArtPath)));
+    }
+    if (newArtPath != null && newArtPath != oldArtPath) {
+      PaintingBinding.instance.imageCache.evict(FileImage(File(newArtPath)));
+    }
+  }
 }

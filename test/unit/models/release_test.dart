@@ -27,7 +27,8 @@ void main() {
     });
 
     test('stores artist when provided', () {
-      const track = Track(path: '/a.mp3', title: 'A', trackNumber: 1, artist: 'The Artist');
+      const track = Track(
+          path: '/a.mp3', title: 'A', trackNumber: 1, artist: 'The Artist');
       expect(track.artist, 'The Artist');
     });
   });
@@ -146,7 +147,8 @@ void main() {
 
     test('copyWith replaces lastActivityAt', () {
       final t = DateTime(2025, 6, 1);
-      final r = Release(folderPath: '/music/album', name: 'Album', tracks: [], tags: []);
+      final r = Release(
+          folderPath: '/music/album', name: 'Album', tracks: [], tags: []);
       final updated = r.copyWith(lastActivityAt: t);
       expect(updated.lastActivityAt, t);
     });
