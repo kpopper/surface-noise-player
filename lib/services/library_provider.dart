@@ -19,6 +19,7 @@ class LibraryProvider extends ChangeNotifier {
   String _searchQuery = '';
   LibrarySortMode _sortMode = LibrarySortMode.recency;
   bool loading = false;
+  bool initialized = false;
   String? rootPath;
 
   List<Release> get releases {
@@ -48,6 +49,14 @@ class LibraryProvider extends ChangeNotifier {
       // wait for a sync just to display releases discovered in a previous
       // session. The sync then runs as a background refresh on top.
       await _reloadReleases();
+    }
+    // Flips the screen from blank to its real state (release list, no-root
+    // CTA, or no-releases CTA) — set once we know the answer, rather than
+    // leaving the UI to guess from rootPath's initial null default while
+    // this async lookup is still in flight.
+    initialized = true;
+    notifyListeners();
+    if (rootPath != null) {
       await _syncInBackground(rootPath!);
     }
   }

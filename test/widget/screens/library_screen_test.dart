@@ -41,6 +41,50 @@ Future<LibraryProvider> pumpLibraryScreen(
 }
 
 void main() {
+  group('initial load', () {
+    testWidgets(
+        'screen is blank while the initial database load is in flight',
+        (tester) async {
+      final fakeBookmark = FakeBookmarkService()
+        ..resolveBookmarkGate = Completer<void>();
+      final fake = FakeLibraryService()
+        ..rootToReturn = null
+        ..releasesToReturn = [];
+      final provider = LibraryProvider(fake, fakeBookmark);
+      await tester.pumpWidget(wrapWithProvider(provider));
+      await tester.pump();
+
+      expect(find.text('No library set up'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      fakeBookmark.resolveBookmarkGate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text('No library set up'), findsOneWidget);
+    });
+
+    testWidgets(
+        'shows the release list once the initial load resolves, when a root is already saved',
+        (tester) async {
+      final fakeBookmark = FakeBookmarkService()
+        ..resolveBookmarkGate = Completer<void>();
+      final fake = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [makeRelease('Album A')];
+      final provider = LibraryProvider(fake, fakeBookmark);
+      await tester.pumpWidget(wrapWithProvider(provider));
+      await tester.pump();
+
+      expect(find.text('Album A'), findsNothing);
+      expect(find.text('No library set up'), findsNothing);
+
+      fakeBookmark.resolveBookmarkGate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Album A'), findsOneWidget);
+    });
+  });
+
   group('no folder selected', () {
     testWidgets('shows empty state prompt', (tester) async {
       await pumpLibraryScreen(tester, savedRoot: null);

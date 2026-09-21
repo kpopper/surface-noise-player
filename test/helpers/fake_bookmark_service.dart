@@ -1,7 +1,14 @@
+import 'dart:async';
+
 import 'package:surface_noise_player/services/bookmark_service.dart';
 
 class FakeBookmarkService implements BookmarkService {
   String? pathToReturn;
+
+  // If set, resolveBookmark waits for this to complete before returning —
+  // lets tests observe LibraryProvider's transient pre-initialized state
+  // instead of it resolving synchronously within a single pump.
+  Completer<void>? resolveBookmarkGate;
   String? lastPickedPath;
   bool downloadResult = true;
   bool downloadFileResult = true;
@@ -30,7 +37,10 @@ class FakeBookmarkService implements BookmarkService {
   }
 
   @override
-  Future<String?> resolveBookmark() async => pathToReturn;
+  Future<String?> resolveBookmark() async {
+    if (resolveBookmarkGate != null) await resolveBookmarkGate!.future;
+    return pathToReturn;
+  }
 
   @override
   Future<void> stopAccess() async {}
