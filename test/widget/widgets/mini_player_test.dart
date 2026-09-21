@@ -68,4 +68,41 @@ void main() {
     expect(find.text('Track One'), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
+
+  testWidgets('swiping up on it opens the Now Playing screen, same as tapping',
+      (tester) async {
+    final fake = FakePlayerService();
+    var tapped = false;
+
+    await tester.pumpWidget(MaterialApp(
+      home: MiniPlayer(playerService: fake, onTap: () => tapped = true),
+    ));
+
+    fake.emitSequenceState(const MediaItem(id: '1', title: 'Track One'));
+    await tester.pump();
+
+    await tester.fling(
+        find.byType(MiniPlayer), const Offset(0, -300), 1000);
+    await tester.pumpAndSettle();
+
+    expect(tapped, isTrue);
+  });
+
+  testWidgets('swiping down on it does not open the Now Playing screen',
+      (tester) async {
+    final fake = FakePlayerService();
+    var tapped = false;
+
+    await tester.pumpWidget(MaterialApp(
+      home: MiniPlayer(playerService: fake, onTap: () => tapped = true),
+    ));
+
+    fake.emitSequenceState(const MediaItem(id: '1', title: 'Track One'));
+    await tester.pump();
+
+    await tester.fling(find.byType(MiniPlayer), const Offset(0, 300), 1000);
+    await tester.pumpAndSettle();
+
+    expect(tapped, isFalse);
+  });
 }
