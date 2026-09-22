@@ -332,23 +332,6 @@ void main() {
     });
   });
 
-  group('clearTagFilter', () {
-    test('removes all active tags', () {
-      provider.toggleTag('jazz');
-      provider.toggleTag('rock');
-      provider.clearTagFilter();
-      expect(provider.activeTags, isEmpty);
-    });
-
-    test('notifies listeners', () {
-      provider.toggleTag('jazz');
-      int notifyCount = 0;
-      provider.addListener(() => notifyCount++);
-      provider.clearTagFilter();
-      expect(notifyCount, 1);
-    });
-  });
-
   group('addTagToRelease', () {
     late Release release;
 

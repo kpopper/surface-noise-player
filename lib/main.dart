@@ -36,6 +36,7 @@ class SurfaceNoiseApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
         useMaterial3: true,
+        chipTheme: const ChipThemeData(shape: StadiumBorder()),
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -43,6 +44,7 @@ class SurfaceNoiseApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
         useMaterial3: true,
+        chipTheme: const ChipThemeData(shape: StadiumBorder()),
       ),
       home: const AppShell(),
     );

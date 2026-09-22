@@ -26,12 +26,18 @@ void main() {
       await tester.pump();
       expect(deleted, isTrue);
     });
+
+    testWidgets('label text is bold', (tester) async {
+      await tester.pumpWidget(wrap(TagChip(label: 'jazz', onDeleted: () {})));
+      final text = tester.widget<Text>(find.text('jazz'));
+      expect(text.style?.fontWeight, FontWeight.bold);
+    });
   });
 
   group('TagChip — filter mode (no onDeleted)', () {
-    testWidgets('renders as FilterChip', (tester) async {
+    testWidgets('renders as InputChip', (tester) async {
       await tester.pumpWidget(wrap(TagChip(label: 'rock', onTap: () {})));
-      expect(find.byType(FilterChip), findsOneWidget);
+      expect(find.byType(InputChip), findsOneWidget);
     });
 
     testWidgets('calls onTap when tapped', (tester) async {
@@ -47,14 +53,47 @@ void main() {
       await tester.pumpWidget(
         wrap(TagChip(label: 'vinyl', selected: true, onTap: () {})),
       );
-      final chip = tester.widget<FilterChip>(find.byType(FilterChip));
+      final chip = tester.widget<InputChip>(find.byType(InputChip));
       expect(chip.selected, isTrue);
     });
 
     testWidgets('unselected by default', (tester) async {
       await tester.pumpWidget(wrap(TagChip(label: 'vinyl', onTap: () {})));
-      final chip = tester.widget<FilterChip>(find.byType(FilterChip));
+      final chip = tester.widget<InputChip>(find.byType(InputChip));
       expect(chip.selected, isFalse);
+    });
+
+    testWidgets('label text is bold', (tester) async {
+      await tester.pumpWidget(wrap(TagChip(label: 'rock', onTap: () {})));
+      final text = tester.widget<Text>(find.text('rock'));
+      expect(text.style?.fontWeight, FontWeight.bold);
+    });
+
+    testWidgets('no delete icon when unselected', (tester) async {
+      await tester.pumpWidget(wrap(TagChip(label: 'vinyl', onTap: () {})));
+      expect(find.byIcon(Icons.close), findsNothing);
+    });
+
+    testWidgets('shows delete icon when selected', (tester) async {
+      await tester.pumpWidget(
+        wrap(TagChip(label: 'vinyl', selected: true, onTap: () {})),
+      );
+      expect(find.byIcon(Icons.close), findsOneWidget);
+    });
+
+    testWidgets('tapping delete icon when selected calls onTap',
+        (tester) async {
+      bool tapped = false;
+      await tester.pumpWidget(
+        wrap(TagChip(
+          label: 'vinyl',
+          selected: true,
+          onTap: () => tapped = true,
+        )),
+      );
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+      expect(tapped, isTrue);
     });
   });
 }

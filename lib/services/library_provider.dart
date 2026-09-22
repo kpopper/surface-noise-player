@@ -184,11 +184,6 @@ class LibraryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void clearTagFilter() {
-    _activeTags.clear();
-    notifyListeners();
-  }
-
   void setSearchQuery(String value) {
     _searchQuery = value;
     notifyListeners();

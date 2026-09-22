@@ -50,7 +50,7 @@ writing a feature; remove or update it when behaviour changes.
 - When no filter is active, all releases are shown
 - Activating a tag filter shows only releases that have that tag
 - Multiple active filters are combined with AND logic — a release must have all active tags to appear
-- Clearing the filter restores the full release list
+- Tapping an already-active tag deactivates it, restoring results for any remaining active tags (or the full list if none remain) — there is no separate "Clear" control
 - A filter that matches no releases shows an empty state
 
 ## Album art
@@ -181,5 +181,7 @@ writing a feature; remove or update it when behaviour changes.
 
 - Each distinct tag is consistently assigned a colour from a fixed palette, derived from the tag string
 - In the release card, each tag is rendered in its assigned colour as plain text
-- In the filter bar, unselected filter chips show the tag label in its assigned colour with a default background; selected chips show a solid background in the tag's colour with white text
+- In the filter bar, unselected filter chips show the tag label in its assigned colour with a default background; selected chips show a solid background in the tag's colour with white text and a small "x", matching the deletable chip style, to indicate tapping deactivates them
 - In the release screen, deletable tag chips use the tag's assigned colour as a tinted background with the label in that colour
+- Tag lozenge (filter and deletable chip) labels are shown in bold
+- Tag lozenges use a fully-rounded pill shape, applied app-wide via the theme so any other chip matches

@@ -20,21 +20,33 @@ class TagChip extends StatelessWidget {
     final color = tagColor(label);
     if (onDeleted != null) {
       return Chip(
-        label: Text(label, style: TextStyle(color: color)),
+        label: Text(
+          label,
+          style: TextStyle(color: color, fontWeight: FontWeight.bold),
+        ),
+        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
         backgroundColor: color.withValues(alpha: 0.12),
         deleteIcon: Icon(Icons.close, size: 14, color: color),
         onDeleted: onDeleted,
       );
     }
-    return FilterChip(
+    return InputChip(
       label: Text(
         label,
-        style: TextStyle(color: selected ? Colors.white : color),
+        style: TextStyle(
+          color: selected ? Colors.white : color,
+          fontWeight: FontWeight.bold,
+        ),
       ),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
       selected: selected,
       selectedColor: color,
       showCheckmark: false,
       onSelected: onTap != null ? (_) => onTap!() : null,
+      deleteIcon: selected
+          ? Icon(Icons.close, size: 14, color: Colors.white)
+          : null,
+      onDeleted: selected ? onTap : null,
     );
   }
 }
