@@ -41,21 +41,6 @@ void main() {
     expect(find.text('vinyl'), findsOneWidget);
   });
 
-  testWidgets('shows Clear chip when a tag is active', (tester) async {
-    final provider = await buildProvider(tags: ['jazz'], activeTags: ['jazz']);
-    await tester.pumpWidget(wrapWithProvider(provider));
-    await tester.pump();
-    expect(find.text('Clear'), findsOneWidget);
-  });
-
-  testWidgets('does not show Clear chip when no tags are active',
-      (tester) async {
-    final provider = await buildProvider(tags: ['jazz']);
-    await tester.pumpWidget(wrapWithProvider(provider));
-    await tester.pump();
-    expect(find.text('Clear'), findsNothing);
-  });
-
   testWidgets('tapping a chip calls toggleTag on the provider', (tester) async {
     final provider = await buildProvider(tags: ['jazz']);
     await tester.pumpWidget(wrapWithProvider(provider));
@@ -67,12 +52,12 @@ void main() {
     expect(provider.activeTags, contains('jazz'));
   });
 
-  testWidgets('tapping Clear calls clearTagFilter', (tester) async {
+  testWidgets('tapping an already-active chip deactivates it', (tester) async {
     final provider = await buildProvider(tags: ['jazz'], activeTags: ['jazz']);
     await tester.pumpWidget(wrapWithProvider(provider));
     await tester.pump();
 
-    await tester.tap(find.text('Clear'));
+    await tester.tap(find.text('jazz'));
     await tester.pump();
 
     expect(provider.activeTags, isEmpty);

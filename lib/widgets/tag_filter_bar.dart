@@ -29,16 +29,6 @@ class TagFilterBar extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 children: [
-                  if (active.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: ActionChip(
-                        avatar: const Icon(Icons.clear, size: 14),
-                        label: const Text('Clear'),
-                        onPressed: lib.clearTagFilter,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ),
                   ...sorted.map((t) => Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: TagChip(
