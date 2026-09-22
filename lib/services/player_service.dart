@@ -157,6 +157,13 @@ class PlayerService implements AbstractPlayerService {
     _setWaiting(false); // clear a stale spinner left by a superseded call
     final track = _queue[index];
 
+    // Selecting a track always stops whatever is currently audible, even if
+    // the newly selected one isn't available yet (or never becomes
+    // available) — otherwise the old track would keep playing while the
+    // mini player/lock screen already show the new selection.
+    await player.pause();
+    if (requestId != _loadRequestId) return;
+
     if (!await _bookmarks.isFileAvailable(track.path)) {
       if (requestId != _loadRequestId) return;
       unawaited(_bookmarks.downloadFile(track.path));

@@ -3,90 +3,12 @@ import 'package:just_audio_platform_interface/just_audio_platform_interface.dart
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/player_service.dart';
 import '../../helpers/fake_bookmark_service.dart';
+import '../../helpers/fake_just_audio_platform.dart';
 import '../../helpers/fake_metadata_service.dart';
-
-// just_audio talks to a real platform plugin by default, which isn't present
-// under `flutter test`. Swapping in this trivial in-memory platform lets
-// PlayerService's setAudioSource()/play() calls succeed without touching a
-// real audio engine — these tests are about the download/timeout
-// orchestration in PlayerService, not just_audio's own playback mechanics.
-class _FakeJustAudioPlatform extends JustAudioPlatform {
-  @override
-  Future<AudioPlayerPlatform> init(InitRequest request) async =>
-      _FakeAudioPlayerPlatform(request.id);
-
-  @override
-  Future<DisposeAllPlayersResponse> disposeAllPlayers(
-          DisposeAllPlayersRequest request) async =>
-      DisposeAllPlayersResponse();
-}
-
-class _FakeAudioPlayerPlatform extends AudioPlayerPlatform {
-  _FakeAudioPlayerPlatform(super.id);
-
-  // just_audio's own _load() awaits the first non-"loading" processing
-  // state derived from this stream before resolving — emit a "ready" event
-  // once subscribed to (asynchronously, so the listener set up by
-  // just_audio is already attached) or setAudioSource()/play() would hang
-  // forever waiting for a transition that never comes.
-  @override
-  Stream<PlaybackEventMessage> get playbackEventMessageStream =>
-      Stream.fromFuture(Future(() => PlaybackEventMessage(
-            processingState: ProcessingStateMessage.ready,
-            updateTime: DateTime.now(),
-            updatePosition: Duration.zero,
-            bufferedPosition: Duration.zero,
-            duration: null,
-            icyMetadata: null,
-            currentIndex: 0,
-            androidAudioSessionId: null,
-          ))).asBroadcastStream();
-
-  @override
-  Future<LoadResponse> load(LoadRequest request) async =>
-      LoadResponse(duration: null);
-
-  @override
-  Future<PlayResponse> play(PlayRequest request) async => PlayResponse();
-
-  @override
-  Future<PauseResponse> pause(PauseRequest request) async => PauseResponse();
-
-  @override
-  Future<SetVolumeResponse> setVolume(SetVolumeRequest request) async =>
-      SetVolumeResponse();
-
-  @override
-  Future<SetSpeedResponse> setSpeed(SetSpeedRequest request) async =>
-      SetSpeedResponse();
-
-  @override
-  Future<SetLoopModeResponse> setLoopMode(SetLoopModeRequest request) async =>
-      SetLoopModeResponse();
-
-  @override
-  Future<SetShuffleModeResponse> setShuffleMode(
-          SetShuffleModeRequest request) async =>
-      SetShuffleModeResponse();
-
-  @override
-  Future<DisposeResponse> dispose(DisposeRequest request) async =>
-      DisposeResponse();
-
-  @override
-  Future<ConcatenatingRemoveRangeResponse> concatenatingRemoveRange(
-          ConcatenatingRemoveRangeRequest request) async =>
-      ConcatenatingRemoveRangeResponse();
-
-  @override
-  Future<ConcatenatingInsertAllResponse> concatenatingInsertAll(
-          ConcatenatingInsertAllRequest request) async =>
-      ConcatenatingInsertAllResponse();
-}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  JustAudioPlatform.instance = _FakeJustAudioPlatform();
+  JustAudioPlatform.instance = FakeJustAudioPlatform();
 
   late FakeBookmarkService fakeBookmarks;
   late FakeMetadataService fakeMetadata;
@@ -140,6 +62,31 @@ void main() {
       await service.playRelease(release);
 
       expect(fakeBookmarks.downloadReleaseCalls, isEmpty);
+    });
+  });
+
+  group('selecting a new track', () {
+    test(
+        'stops any currently playing audio immediately, even if the new track is unavailable',
+        () async {
+      final release = releaseOf([
+        const Track(path: '/release/01.mp3', title: 'One', trackNumber: 1),
+        const Track(path: '/release/02.mp3', title: 'Two', trackNumber: 2),
+      ]);
+
+      await service.playRelease(release);
+      expect(service.player.playing, isTrue);
+
+      fakeBookmarks.unavailablePaths = {'/release/02.mp3'};
+      final future = service.seekToNext();
+
+      // The old track is paused synchronously, as soon as the new track is
+      // selected — not only once its own download wait resolves (or times
+      // out), by which point the mini player/lock screen already show the
+      // newly selected track's details.
+      expect(service.player.playing, isFalse);
+
+      await future;
     });
   });
 

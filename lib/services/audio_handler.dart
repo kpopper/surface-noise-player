@@ -28,14 +28,56 @@ class SurfaceNoiseAudioHandler extends BaseAudioHandler {
 
   SurfaceNoiseAudioHandler([PlayerService? player])
       : _player = player ?? PlayerService.instance {
-    _sequenceStateSub = _player.sequenceStateStream.listen((state) {
-      final tag = state?.currentSource?.tag;
-      if (tag is MediaItem) mediaItem.add(tag);
-    });
+    _sequenceStateSub =
+        _player.sequenceStateStream.listen((_) => _broadcastMediaItem());
     _playerStateSub = _player.playerStateStream.listen((_) => _broadcastState());
-    _waitingSub = _player.waitingForDownloadStream.listen((_) => _broadcastState());
+    _waitingSub = _player.waitingForDownloadStream.listen((_) {
+      // A newly requested track updates PlayerService.currentTrack /
+      // currentRelease synchronously, well before just_audio has a loaded
+      // source for it (or may never, if the download times out) — refresh
+      // the lock screen/Control Center info from those immediately rather
+      // than leaving the previous track's details showing for the whole
+      // download wait.
+      _broadcastMediaItem();
+      _broadcastState();
+    });
     _positionSub = _player.positionStream.listen((_) => _broadcastState());
+    _broadcastMediaItem();
     _broadcastState();
+  }
+
+  // Prefers the just_audio-loaded tag, but only once it actually matches
+  // the currently requested track — otherwise it's still the previous
+  // track's tag, left over until the new one finishes downloading and
+  // loading. Falls back to a MediaItem built from PlayerService's own
+  // currentTrack/currentRelease, mirroring _buildSource in player_service.
+  void _broadcastMediaItem() {
+    final loadedTag = _player.player.sequenceState.currentSource?.tag;
+    final tag = loadedTag is MediaItem ? loadedTag : null;
+    final pendingTrack = _player.currentTrack;
+    if (tag == null && pendingTrack == null) {
+      // Nothing is playing or about to play (PlayerService has stopped
+      // itself entirely, e.g. a download that never completed) — clear the
+      // native now-playing display instead of leaving the previous track's
+      // info showing, paused, with nothing driving it further.
+      unawaited(super.stop());
+      return;
+    }
+    final tagIsCurrent =
+        tag != null && (pendingTrack == null || tag.id == pendingTrack.path);
+    if (tagIsCurrent) {
+      mediaItem.add(tag);
+      return;
+    }
+    final release = _player.currentRelease;
+    mediaItem.add(MediaItem(
+      id: pendingTrack!.path,
+      title: pendingTrack.title,
+      artist: pendingTrack.artist ?? release?.albumArtist,
+      album: release?.albumTitle ?? release?.name,
+      artUri:
+          release?.artPath != null ? Uri.file(release!.artPath!) : null,
+    ));
   }
 
   void _broadcastState() {

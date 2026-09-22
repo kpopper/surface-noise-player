@@ -39,10 +39,17 @@ class MiniPlayer extends StatelessWidget {
             if (tag == null && pendingTrack == null) {
               return const SizedBox.shrink();
             }
-            final title = tag?.title ?? pendingTrack!.title;
-            final album = tag?.album ??
-                svc.currentRelease?.albumTitle ??
-                svc.currentRelease?.name;
+            // A non-null tag can still be the *previous* track's — just_audio
+            // hasn't been given the newly requested track's source yet while
+            // it downloads. Only trust the tag once it actually matches what
+            // was requested; otherwise show the pending track/release's own
+            // details instead of stale ones.
+            final tagIsCurrent = tag != null &&
+                (pendingTrack == null || tag.id == pendingTrack.path);
+            final title = tagIsCurrent ? tag.title : pendingTrack!.title;
+            final album = tagIsCurrent
+                ? tag.album
+                : svc.currentRelease?.albumTitle ?? svc.currentRelease?.name;
             final isWaiting = waitingSnap.data ?? false;
 
             return GestureDetector(

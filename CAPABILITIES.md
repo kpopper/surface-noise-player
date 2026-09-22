@@ -93,9 +93,10 @@ writing a feature; remove or update it when behaviour changes.
 ## Playback
 
 - Tracks are loaded and played one at a time, in release track order, regardless of local availability at the moment playback starts — the full track list is the queue, not just the currently-available subset
+- Selecting a track (tapping a specific track, or skipping to the next/previous track) immediately stops whatever is currently playing, even if the newly selected track isn't locally available and ends up waiting to download (or failing to) — the previous track never keeps playing in the background while a new selection is pending
 - Before loading a track, its local availability is checked; if it is not locally available, an iCloud download is requested for it and playback pauses (showing a buffering/waiting state) for up to 120 seconds while it downloads, then playback starts automatically without further user action
 - Once the requested track is confirmed available — immediately, or after downloading within the 120 seconds — an iCloud download is also requested for the rest of the release, so the remaining tracks keep downloading in the background; this happens on every track request (tapping a specific track, or skipping to the next/previous track), even if the requested track was already locally available. A track that never becomes available does not trigger a download of the rest of the release
-- The mini player (and the Now Playing screen, if open) appears as soon as a track is requested, not only once it is actually loaded into the player — tapping a track that needs to download gives immediate visual feedback rather than appearing to do nothing until the download finishes
+- The mini player (and the Now Playing screen, if open) appears as soon as a track is requested, not only once it is actually loaded into the player — tapping a track that needs to download gives immediate visual feedback rather than appearing to do nothing until the download finishes; its title, artist, album, and artwork reflect the newly requested track and release immediately too, rather than continuing to show the previous track's details while the new one downloads
 - While the player is waiting for a track to download, the mini player's and Now Playing screen's play/pause control is replaced by a spinner; previous/next controls remain available
 - While the player is waiting for a track to download, the corresponding row in the release screen shows a spinner in place of its track number
 - The first time a track is confirmed locally available, its embedded metadata is read and persisted to the database (see Audio metadata) before it starts playing, so the title shown from the very start of playback is the corrected one, not the filename-derived guess
@@ -108,7 +109,9 @@ writing a feature; remove or update it when behaviour changes.
 - If no track in the release is available and none can be downloaded, a message is shown and playback stops cleanly without looping or crashing
 - Reaching the end of the release's last track stops playback and closes the mini player, rather than leaving it showing the last track as playing
 - If playback stops because no further track could be played, the mini player closes the same way
+- Whenever playback stops entirely (the queue finishes, runs out of playable tracks, or a download never completes), the lock screen and Control Center's now-playing display is cleared rather than continuing to show the last track that was loaded there
 - The lock screen and Control Center show play/pause and skip previous/next controls, and skipping via them behaves exactly like tapping the on-screen skip controls (including requesting a download and waiting if the target track isn't locally available) — not tied to whichever tracks happen to already be loaded into the audio player
+- The lock screen and Control Center's now-playing info (title, artist, album, and artwork) also updates to the newly requested track and release as soon as it's requested, rather than continuing to show the previous track's details until the new one finishes downloading and loading
 
 ## Mini player
 

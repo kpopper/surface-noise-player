@@ -69,6 +69,55 @@ void main() {
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 
+  testWidgets(
+      'switching to a track in another release shows its title and album immediately, not the previous track\'s',
+      (tester) async {
+    // Regression: title/album fell back to the just_audio-loaded tag
+    // whenever one was present, even if it was still the *previous*
+    // track's tag (because the newly requested track hadn't finished
+    // downloading and loading yet) — only the art (read straight from
+    // currentRelease) updated immediately; title/album stayed stuck on the
+    // old track until the new one actually loaded.
+    final fake = FakePlayerService();
+    final releaseOne = Release(
+      folderPath: '/music/One',
+      name: 'Release One',
+      tracks: const [
+        Track(path: '/music/One/01.mp3', title: 'Old Track', trackNumber: 1)
+      ],
+      tags: const [],
+    );
+    final releaseTwo = Release(
+      folderPath: '/music/Two',
+      name: 'Release Two',
+      albumTitle: 'Album Two',
+      tracks: const [
+        Track(path: '/music/Two/01.mp3', title: 'New Track', trackNumber: 1)
+      ],
+      tags: const [],
+    );
+
+    await tester.pumpWidget(MaterialApp(home: MiniPlayer(playerService: fake)));
+
+    await fake.playRelease(releaseOne);
+    fake.emitSequenceState(
+        const MediaItem(id: '/music/One/01.mp3', title: 'Old Track'));
+    await tester.pump();
+    expect(find.text('Old Track'), findsOneWidget);
+
+    // Requesting a track in a different release updates currentRelease and
+    // currentTrack synchronously, but just_audio's sequenceStateStream
+    // still reports the old track's tag until the new one downloads.
+    await fake.playRelease(releaseTwo);
+    fake.emitWaitingForDownload(true);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('New Track'), findsOneWidget);
+    expect(find.text('Album Two'), findsOneWidget);
+    expect(find.text('Old Track'), findsNothing);
+  });
+
   testWidgets('swiping up on it opens the Now Playing screen, same as tapping',
       (tester) async {
     final fake = FakePlayerService();
