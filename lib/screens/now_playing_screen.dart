@@ -102,13 +102,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 if (tag == null && pendingTrack == null) {
                   return const SizedBox.shrink();
                 }
-                final title = tag?.title ?? pendingTrack!.title;
-                final artist = tag?.artist ??
-                    pendingTrack?.artist ??
-                    _svc.currentRelease?.albumArtist;
-                final album = tag?.album ??
-                    _svc.currentRelease?.albumTitle ??
-                    _svc.currentRelease?.name;
+                // A non-null tag can still be the *previous* track's —
+                // just_audio hasn't been given the newly requested track's
+                // source yet while it downloads. Only trust the tag once it
+                // actually matches what was requested; otherwise show the
+                // pending track/release's own details instead of stale ones.
+                final tagIsCurrent = tag != null &&
+                    (pendingTrack == null || tag.id == pendingTrack.path);
+                final title = tagIsCurrent ? tag.title : pendingTrack!.title;
+                final artist = tagIsCurrent
+                    ? tag.artist
+                    : pendingTrack?.artist ?? _svc.currentRelease?.albumArtist;
+                final album = tagIsCurrent
+                    ? tag.album
+                    : _svc.currentRelease?.albumTitle ??
+                        _svc.currentRelease?.name;
                 final isWaiting = waitingSnap.data ?? false;
 
                 return Padding(
@@ -223,13 +231,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                               ),
                               const SizedBox(width: 16),
                               if (isWaiting)
-                                const SizedBox(
-                                  width: 64,
-                                  height: 64,
-                                  child: Padding(
-                                    padding: EdgeInsets.all(20),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    shape: const CircleBorder(),
+                                    padding: const EdgeInsets.all(20),
+                                  ),
+                                  onPressed: _svc.cancelDownloadWait,
+                                  child: const SizedBox(
+                                    width: 24,
+                                    height: 24,
                                     child: CircularProgressIndicator(
-                                        strokeWidth: 3),
+                                      strokeWidth: 3,
+                                      valueColor:
+                                          AlwaysStoppedAnimation(Colors.white),
+                                    ),
                                   ),
                                 )
                               else

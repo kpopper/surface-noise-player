@@ -251,21 +251,29 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
             child: StreamBuilder<SequenceState?>(
               stream: _playerSvc.sequenceStateStream,
               builder: (context, snap) {
-                // currentTrack is set as soon as a track is requested, even
-                // before it's downloaded and handed to just_audio — fall
-                // back to it (refreshed via waitingForDownloadStream below)
-                // so the row highlights immediately on tap, not only once
-                // the track actually starts playing.
-                final tag = snap.data?.currentSource?.tag as MediaItem?;
-                final isThisRelease =
-                    _playerSvc.currentRelease?.folderPath == release.folderPath;
-
                 return StreamBuilder<bool>(
                   stream: _playerSvc.waitingForDownloadStream,
                   initialData: _playerSvc.isWaitingForDownload,
                   builder: (context, waitingSnap) {
-                    final currentPath = tag?.id ??
-                        (isThisRelease ? _playerSvc.currentTrack?.path : null);
+                    // Recomputed here (not in the outer builder above) so
+                    // these track the currently requested track/release
+                    // immediately — sequenceStateStream (the outer stream)
+                    // only fires once just_audio has actually loaded a
+                    // source, which can be well after a track is first
+                    // requested and is still waiting to download.
+                    final tag = snap.data?.currentSource?.tag as MediaItem?;
+                    final isThisRelease = _playerSvc.currentRelease
+                            ?.folderPath ==
+                        release.folderPath;
+                    final pendingPath =
+                        isThisRelease ? _playerSvc.currentTrack?.path : null;
+                    // A present tag can still be a previous track's, left
+                    // over until the newly requested one finishes
+                    // downloading and loading — only trust it once it
+                    // actually matches the pending track.
+                    final currentPath = (tag != null && tag.id == pendingPath)
+                        ? tag.id
+                        : pendingPath;
                     final isWaiting = waitingSnap.data ?? false;
 
                     if (release.tracks.isEmpty) {
@@ -363,7 +371,13 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                             // and it suddenly gains one.
                             subtitle: Text(track.artist ?? '',
                                 style: const TextStyle(fontSize: 12)),
-                            onTap: () => _playerSvc.playTrack(release, i),
+                            // Tapping the row that's already spinning cancels
+                            // that wait instead of re-requesting the same
+                            // track, so you don't have to sit through the
+                            // full download timeout to back out of it.
+                            onTap: isPlaying && isWaiting
+                                ? _playerSvc.cancelDownloadWait
+                                : () => _playerSvc.playTrack(release, i),
                           );
                         }),
                       ],

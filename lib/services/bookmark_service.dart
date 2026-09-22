@@ -15,18 +15,13 @@ abstract class BookmarkService {
 
   // Requests iCloud download of all files in a folder. Returns false if the
   // request fails (e.g. insufficient storage). Returns immediately without
-  // waiting for the download to complete — use awaitDownload for that.
+  // waiting for the download to complete — poll isFileAvailable for that.
   Future<bool> downloadRelease(String folderPath);
 
   // Requests iCloud download of a single file. Returns false if the request
   // fails. Returns immediately without waiting for the download to complete
   // — poll isFileAvailable for that.
   Future<bool> downloadFile(String path);
-
-  // Triggers iCloud download of all files in a folder and waits until they are
-  // all locally available. Returns false on timeout or if the trigger fails.
-  // Used before scanning a newly selected release.
-  Future<bool> awaitDownload(String folderPath);
 
   // Evicts all files in a folder from local iCloud storage. Best-effort.
   Future<void> evictRelease(String folderPath);
@@ -90,17 +85,6 @@ class _BookmarkServiceImpl implements BookmarkService {
     try {
       final result =
           await _channel.invokeMethod<bool>('downloadFile', {'path': path});
-      return result ?? false;
-    } on PlatformException {
-      return false;
-    }
-  }
-
-  @override
-  Future<bool> awaitDownload(String folderPath) async {
-    try {
-      final result = await _channel
-          .invokeMethod<bool>('awaitDownload', {'path': folderPath});
       return result ?? false;
     } on PlatformException {
       return false;

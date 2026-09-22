@@ -63,13 +63,6 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                 return
             }
             evictFile(path: path, result: result)
-        case "awaitDownload":
-            guard let args = call.arguments as? [String: Any],
-                  let path = args["path"] as? String else {
-                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
-                return
-            }
-            awaitDownload(path: path, result: result)
         case "evictRelease":
             guard let args = call.arguments as? [String: Any],
                   let path = args["path"] as? String else {
@@ -312,42 +305,6 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
             } catch {
                 DispatchQueue.main.async { result(false) }
             }
-        }
-    }
-
-    private func awaitDownload(path: String, result: @escaping FlutterResult) {
-        let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(atPath: path) else {
-            result(false)
-            return
-        }
-
-        let urls = contents.map { URL(fileURLWithPath: path).appendingPathComponent($0) }
-
-        // Trigger download for every file in the folder.
-        for url in urls {
-            try? fm.startDownloadingUbiquitousItem(at: url)
-        }
-
-        // Poll on a background thread until all files report as locally current.
-        DispatchQueue.global(qos: .userInitiated).async {
-            let deadline = Date().addingTimeInterval(120) // 2-minute timeout
-            while Date() < deadline {
-                let allReady = urls.allSatisfy { url -> Bool in
-                    if let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]),
-                       let status = values.ubiquitousItemDownloadingStatus {
-                        return status == .current
-                    }
-                    // Non-ubiquitous file — available if it exists on disk.
-                    return fm.fileExists(atPath: url.path)
-                }
-                if allReady {
-                    DispatchQueue.main.async { result(true) }
-                    return
-                }
-                Thread.sleep(forTimeInterval: 1.0)
-            }
-            DispatchQueue.main.async { result(false) }
         }
     }
 

@@ -93,21 +93,26 @@ writing a feature; remove or update it when behaviour changes.
 ## Playback
 
 - Tracks are loaded and played one at a time, in release track order, regardless of local availability at the moment playback starts — the full track list is the queue, not just the currently-available subset
-- Before loading a track, its local availability is checked; if it is not locally available, an iCloud download is requested for it and playback pauses (showing a buffering/waiting state) until it becomes available, then playback starts automatically without further user action
-- Requesting to play any track (tapping a specific track, or skipping to the next/previous track) also requests an iCloud download of the whole release, not just the requested track — this happens on every such request, even if the requested track is already locally available, so the rest of the release keeps downloading in the background
-- The mini player (and the Now Playing screen, if open) appears as soon as a track is requested, not only once it is actually loaded into the player — tapping a track that needs to download gives immediate visual feedback rather than appearing to do nothing until the download finishes
+- Selecting a track (tapping a specific track, or skipping to the next/previous track) immediately stops whatever is currently playing, even if the newly selected track isn't locally available and ends up waiting to download (or failing to) — the previous track never keeps playing in the background while a new selection is pending
+- Before loading a track, its local availability is checked; if it is not locally available, an iCloud download is requested for it and playback pauses (showing a buffering/waiting state) for up to 120 seconds while it downloads, then playback starts automatically without further user action
+- Once the requested track is confirmed available — immediately, or after downloading within the 120 seconds — an iCloud download is also requested for the rest of the release, so the remaining tracks keep downloading in the background; this happens on every track request (tapping a specific track, or skipping to the next/previous track), even if the requested track was already locally available. A track that never becomes available does not trigger a download of the rest of the release
+- The mini player (and the Now Playing screen, if open) appears as soon as a track is requested, not only once it is actually loaded into the player — tapping a track that needs to download gives immediate visual feedback rather than appearing to do nothing until the download finishes; its title, artist, album, and artwork reflect the newly requested track and release immediately too, rather than continuing to show the previous track's details while the new one downloads
 - While the player is waiting for a track to download, the mini player's and Now Playing screen's play/pause control is replaced by a spinner; previous/next controls remain available
-- While the player is waiting for a track to download, the corresponding row in the release screen shows a spinner in place of its track number
+- While the player is waiting for a track to download, the corresponding row in the release screen shows a spinner in place of its track number immediately, not only once a later, unrelated rebuild happens to pick up the change
+- Tapping the currently-spinning row cancels the pending download and stops playback immediately, rather than re-requesting the same track or waiting out the full download timeout
 - The first time a track is confirmed locally available, its embedded metadata is read and persisted to the database (see Audio metadata) before it starts playing, so the title shown from the very start of playback is the corrected one, not the filename-derived guess
 - While a release plays, the rest of its tracks are also checked periodically for ones that have finished downloading in the background (from the whole-release request above) and still need their metadata read — this keeps correcting the rest of the album as it downloads, not only the track actually being played; it stops once every track's metadata has been read
-- If a requested download does not complete within a timeout, a message is shown and playback automatically advances to the next track, as if the track had failed to play
+- If a requested download does not complete within 120 seconds, a message is shown once and playback stops cleanly, rather than trying further tracks in the release
 - If a track that exists on disk still fails to play (e.g. a corrupt file), a message is shown and playback automatically advances to the next track
+- Advancing to the next track (after the previous one finishes playing, or fails to play) is subject to the same availability check and download wait as any other track request; if that next track also fails to download in time, a message is shown and playback stops rather than trying further tracks
 - A cancelled/superseded playback request (e.g. tapping a second track, or skipping, before the previous one finishes loading or downloading) does not show an error message and does not leave a stale buffering spinner showing
 - Skip previous/next moves through the release's track order, not through play history, so skipping back from a track works even if the earlier track was never played this session
 - If no track in the release is available and none can be downloaded, a message is shown and playback stops cleanly without looping or crashing
 - Reaching the end of the release's last track stops playback and closes the mini player, rather than leaving it showing the last track as playing
 - If playback stops because no further track could be played, the mini player closes the same way
+- Whenever playback stops entirely (the queue finishes, runs out of playable tracks, or a download never completes), the lock screen and Control Center's now-playing display is cleared rather than continuing to show the last track that was loaded there
 - The lock screen and Control Center show play/pause and skip previous/next controls, and skipping via them behaves exactly like tapping the on-screen skip controls (including requesting a download and waiting if the target track isn't locally available) — not tied to whichever tracks happen to already be loaded into the audio player
+- The lock screen and Control Center's now-playing info (title, artist, album, and artwork) also updates to the newly requested track and release as soon as it's requested, rather than continuing to show the previous track's details until the new one finishes downloading and loading
 
 ## Mini player
 
@@ -115,6 +120,7 @@ writing a feature; remove or update it when behaviour changes.
 - Shows current track title, album, and art thumbnail
 - Shows the filename-derived track title until the track's real metadata has been read (see Audio metadata)
 - Provides play/pause and skip controls; the play/pause control becomes a spinner while waiting for the current track to download
+- Tapping the spinner cancels the pending download and stops playback immediately, rather than waiting out the full download timeout
 - Tapping it opens the Now Playing screen
 - Swiping up on it also opens the Now Playing screen, same as tapping
 - Sized for easy tapping: larger art thumbnail, text, and control icons than a standard compact bar, with generous padding
@@ -126,6 +132,7 @@ writing a feature; remove or update it when behaviour changes.
 - Shows the filename-derived track title until the track's real metadata has been read (see Audio metadata)
 - Progress bar showing current position, scrubbable to seek
 - Play/pause, previous, and next controls; the play/pause control becomes a spinner while waiting for the current track to download
+- Tapping the spinner cancels the pending download and stops playback immediately, rather than waiting out the full download timeout
 - Dismissed by tapping the close button or swiping down
 - Automatically closes itself if playback stops (e.g. the queue finishes or runs out of playable tracks) while it's open
 
