@@ -118,6 +118,30 @@ void main() {
     expect(find.text('Old Track'), findsNothing);
   });
 
+  testWidgets('tapping the spinner cancels the pending download wait',
+      (tester) async {
+    final fake = FakePlayerService();
+    final release = Release(
+      folderPath: '/music/Test',
+      name: 'Test',
+      tracks: const [
+        Track(path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1)
+      ],
+      tags: const [],
+    );
+
+    await tester.pumpWidget(MaterialApp(home: MiniPlayer(playerService: fake)));
+    await fake.playRelease(release);
+    fake.emitWaitingForDownload(true);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await tester.tap(find.byType(CircularProgressIndicator));
+
+    expect(fake.cancelDownloadWaitCalled, isTrue);
+  });
+
   testWidgets('swiping up on it opens the Now Playing screen, same as tapping',
       (tester) async {
     final fake = FakePlayerService();

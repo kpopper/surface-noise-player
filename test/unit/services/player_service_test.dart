@@ -90,6 +90,50 @@ void main() {
     });
   });
 
+  group('cancelDownloadWait', () {
+    test('stops playback immediately, without waiting out the timeout',
+        () async {
+      final release = releaseOf([
+        const Track(path: '/release/01.mp3', title: 'One', trackNumber: 1),
+      ]);
+      fakeBookmarks.unavailablePaths = {'/release/01.mp3'};
+      final future = service.playRelease(release);
+
+      // Give the wait loop a moment to actually start, well short of the
+      // 50ms timeout configured in setUp.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      expect(service.isWaitingForDownload, isTrue);
+
+      final messages = <String>[];
+      final sub = service.errorMessageStream.listen(messages.add);
+
+      await service.cancelDownloadWait();
+
+      expect(service.currentRelease, isNull);
+      expect(service.isWaitingForDownload, isFalse);
+      // A deliberate cancel isn't a failure — no "couldn't play" message.
+      expect(messages, isEmpty);
+
+      await future; // let the original call unwind cleanly
+      await sub.cancel();
+    });
+
+    test('does nothing when nothing is currently being waited on', () async {
+      final release = releaseOf([
+        const Track(path: '/release/01.mp3', title: 'One', trackNumber: 1),
+      ]);
+
+      await service.playRelease(release);
+      expect(service.player.playing, isTrue);
+
+      await service.cancelDownloadWait();
+
+      // Playback carries on untouched.
+      expect(service.currentRelease, isNotNull);
+      expect(service.player.playing, isTrue);
+    });
+  });
+
   group('a track that never becomes available', () {
     test('shows exactly one message and stops playback cleanly', () async {
       final release = releaseOf([

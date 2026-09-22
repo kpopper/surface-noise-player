@@ -98,7 +98,8 @@ writing a feature; remove or update it when behaviour changes.
 - Once the requested track is confirmed available — immediately, or after downloading within the 120 seconds — an iCloud download is also requested for the rest of the release, so the remaining tracks keep downloading in the background; this happens on every track request (tapping a specific track, or skipping to the next/previous track), even if the requested track was already locally available. A track that never becomes available does not trigger a download of the rest of the release
 - The mini player (and the Now Playing screen, if open) appears as soon as a track is requested, not only once it is actually loaded into the player — tapping a track that needs to download gives immediate visual feedback rather than appearing to do nothing until the download finishes; its title, artist, album, and artwork reflect the newly requested track and release immediately too, rather than continuing to show the previous track's details while the new one downloads
 - While the player is waiting for a track to download, the mini player's and Now Playing screen's play/pause control is replaced by a spinner; previous/next controls remain available
-- While the player is waiting for a track to download, the corresponding row in the release screen shows a spinner in place of its track number
+- While the player is waiting for a track to download, the corresponding row in the release screen shows a spinner in place of its track number immediately, not only once a later, unrelated rebuild happens to pick up the change
+- Tapping the currently-spinning row cancels the pending download and stops playback immediately, rather than re-requesting the same track or waiting out the full download timeout
 - The first time a track is confirmed locally available, its embedded metadata is read and persisted to the database (see Audio metadata) before it starts playing, so the title shown from the very start of playback is the corrected one, not the filename-derived guess
 - While a release plays, the rest of its tracks are also checked periodically for ones that have finished downloading in the background (from the whole-release request above) and still need their metadata read — this keeps correcting the rest of the album as it downloads, not only the track actually being played; it stops once every track's metadata has been read
 - If a requested download does not complete within 120 seconds, a message is shown once and playback stops cleanly, rather than trying further tracks in the release
@@ -119,6 +120,7 @@ writing a feature; remove or update it when behaviour changes.
 - Shows current track title, album, and art thumbnail
 - Shows the filename-derived track title until the track's real metadata has been read (see Audio metadata)
 - Provides play/pause and skip controls; the play/pause control becomes a spinner while waiting for the current track to download
+- Tapping the spinner cancels the pending download and stops playback immediately, rather than waiting out the full download timeout
 - Tapping it opens the Now Playing screen
 - Swiping up on it also opens the Now Playing screen, same as tapping
 - Sized for easy tapping: larger art thumbnail, text, and control icons than a standard compact bar, with generous padding
@@ -130,6 +132,7 @@ writing a feature; remove or update it when behaviour changes.
 - Shows the filename-derived track title until the track's real metadata has been read (see Audio metadata)
 - Progress bar showing current position, scrubbable to seek
 - Play/pause, previous, and next controls; the play/pause control becomes a spinner while waiting for the current track to download
+- Tapping the spinner cancels the pending download and stops playback immediately, rather than waiting out the full download timeout
 - Dismissed by tapping the close button or swiping down
 - Automatically closes itself if playback stops (e.g. the queue finishes or runs out of playable tracks) while it's open
 

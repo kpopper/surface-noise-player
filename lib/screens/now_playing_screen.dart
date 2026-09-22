@@ -231,13 +231,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                               ),
                               const SizedBox(width: 16),
                               if (isWaiting)
-                                const SizedBox(
-                                  width: 64,
-                                  height: 64,
-                                  child: Padding(
-                                    padding: EdgeInsets.all(20),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    shape: const CircleBorder(),
+                                    padding: const EdgeInsets.all(20),
+                                  ),
+                                  onPressed: _svc.cancelDownloadWait,
+                                  child: const SizedBox(
+                                    width: 24,
+                                    height: 24,
                                     child: CircularProgressIndicator(
-                                        strokeWidth: 3),
+                                      strokeWidth: 3,
+                                      valueColor:
+                                          AlwaysStoppedAnimation(Colors.white),
+                                    ),
                                   ),
                                 )
                               else

@@ -73,6 +73,100 @@ void main() {
     });
 
     testWidgets(
+        'shows the spinner on the requested row immediately, not only after the periodic availability poll',
+        (tester) async {
+      // Regression: isThisRelease/currentPath were computed once in the
+      // outer sequenceStateStream builder, which only reran once just_audio
+      // actually loaded a source — so the spinner (and highlighted row)
+      // didn't appear until the unrelated 2-second availability poll next
+      // happened to force a full rebuild, well after the track was tapped.
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [
+          Track(path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1),
+        ],
+        tags: const [],
+      );
+      final fakePlayer = FakePlayerService();
+      final fakeBookmarks = FakeBookmarkService();
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            home: ReleaseScreen(
+              release: release,
+              playerService: fakePlayer,
+              bookmarkService: fakeBookmarks,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      await fakePlayer.playRelease(release, trackIndex: 0);
+      fakePlayer.emitWaitingForDownload(true);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets(
+        'tapping the currently spinning row cancels the wait instead of re-requesting it',
+        (tester) async {
+      final release = Release(
+        folderPath: '/music/Test',
+        name: 'Test',
+        tracks: const [
+          Track(path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1),
+        ],
+        tags: const [],
+      );
+      final fakePlayer = FakePlayerService();
+      final fakeBookmarks = FakeBookmarkService();
+      final fakeService = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [release];
+      final provider = await makeProvider(fakeService);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LibraryProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            home: ReleaseScreen(
+              release: release,
+              playerService: fakePlayer,
+              bookmarkService: fakeBookmarks,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await fakePlayer.playRelease(release, trackIndex: 0);
+      fakePlayer.emitWaitingForDownload(true);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      final callCountBeforeTap = fakePlayer.playReleaseCallCount;
+
+      await tester.tap(find.text('Track One'));
+      await tester.pump();
+
+      expect(fakePlayer.cancelDownloadWaitCalled, isTrue);
+      // Should not have re-triggered a fresh play request for the same track.
+      expect(fakePlayer.playReleaseCallCount, callCountBeforeTap);
+    });
+
+    testWidgets(
         'updates from a cloud icon to the track number once a background download finishes',
         (tester) async {
       // Regression: availability was only ever checked once (on open, or

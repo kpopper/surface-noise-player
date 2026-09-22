@@ -127,6 +127,16 @@ class PlayerService implements AbstractPlayerService {
   Future<void> play() => player.play();
   @override
   Future<void> pause() => player.pause();
+  @override
+  Future<void> cancelDownloadWait() async {
+    if (!_waiting) return;
+    // Invalidates the in-flight wait loop and any other stale in-flight
+    // work immediately; _stopPlayback below also bumps this, but bumping it
+    // first here means nothing further can act on the cancelled request
+    // even during _stopPlayback's own awaits.
+    ++_loadRequestId;
+    await _stopPlayback();
+  }
 
   @override
   Future<void> playRelease(Release release, {int trackIndex = 0}) async {

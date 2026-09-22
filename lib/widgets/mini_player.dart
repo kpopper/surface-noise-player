@@ -110,14 +110,19 @@ class MiniPlayer extends StatelessWidget {
                                   svc.hasPrevious ? svc.seekToPrevious : null,
                             ),
                             if (isWaiting)
-                              const SizedBox(
-                                width: 34,
-                                height: 34,
-                                child: Padding(
-                                  padding: EdgeInsets.all(6),
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2.5),
+                              IconButton(
+                                iconSize: 34,
+                                tooltip: 'Cancel',
+                                icon: const SizedBox(
+                                  width: 34,
+                                  height: 34,
+                                  child: Padding(
+                                    padding: EdgeInsets.all(6),
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2.5),
+                                  ),
                                 ),
+                                onPressed: svc.cancelDownloadWait,
                               )
                             else
                               IconButton(

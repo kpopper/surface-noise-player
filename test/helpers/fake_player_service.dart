@@ -32,8 +32,10 @@ class FakePlayerService implements AbstractPlayerService {
   // Recorded calls
   bool playCalled = false;
   bool pauseCalled = false;
+  bool cancelDownloadWaitCalled = false;
   Release? lastPlayedRelease;
   int? lastPlayedTrackIndex;
+  int playReleaseCallCount = 0;
   Duration? seekedTo;
 
   @override
@@ -81,11 +83,17 @@ class FakePlayerService implements AbstractPlayerService {
         release.tracks.isNotEmpty ? release.tracks[trackIndex] : null;
     lastPlayedRelease = release;
     lastPlayedTrackIndex = trackIndex;
+    playReleaseCallCount++;
   }
 
   @override
   Future<void> playTrack(Release release, int trackIndex) =>
       playRelease(release, trackIndex: trackIndex);
+
+  @override
+  Future<void> cancelDownloadWait() async {
+    cancelDownloadWaitCalled = true;
+  }
 
   void emitSequenceState(MediaItem tag) {
     final source = AudioSource.uri(Uri.file('/tmp/track.mp3'), tag: tag)

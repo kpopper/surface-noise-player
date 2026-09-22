@@ -76,6 +76,36 @@ void main() {
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 
+  testWidgets('tapping the spinner cancels the pending download wait',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final fake = FakePlayerService();
+    final release = Release(
+      folderPath: '/music/Test',
+      name: 'Test',
+      tracks: const [
+        Track(path: '/music/Test/01.mp3', title: 'Track One', trackNumber: 1)
+      ],
+      tags: const [],
+    );
+
+    await tester
+        .pumpWidget(MaterialApp(home: NowPlayingScreen(playerService: fake)));
+    await fake.playRelease(release);
+    fake.emitWaitingForDownload(true);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await tester.tap(find.byType(CircularProgressIndicator));
+
+    expect(fake.cancelDownloadWaitCalled, isTrue);
+  });
+
   testWidgets(
       'switching to a track in another release shows its title, artist and album immediately, not the previous track\'s',
       (tester) async {

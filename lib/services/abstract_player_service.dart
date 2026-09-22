@@ -30,4 +30,8 @@ abstract class AbstractPlayerService {
   Future<void> pause();
   Future<void> playRelease(Release release, {int trackIndex = 0});
   Future<void> playTrack(Release release, int trackIndex);
+  // Gives up on the track currently being waited on (isWaitingForDownload),
+  // stopping playback cleanly and immediately rather than waiting out its
+  // download timeout. Does nothing if nothing is currently being waited on.
+  Future<void> cancelDownloadWait();
 }
