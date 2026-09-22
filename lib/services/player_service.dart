@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart';
 import '../models/release.dart';
@@ -12,9 +13,9 @@ class PlayerService implements AbstractPlayerService {
   static PlayerService get instance => _instance ??= PlayerService._();
 
   // How often to re-check availability while waiting for a track to
-  // download, and how long to wait before giving up and skipping it.
-  static const _downloadPollInterval = Duration(seconds: 1);
-  static const _downloadTimeout = Duration(minutes: 10);
+  // download, and how long to wait before giving up on it.
+  static const _defaultDownloadPollInterval = Duration(seconds: 1);
+  static const _defaultDownloadTimeout = Duration(seconds: 120);
 
   // How often to check the rest of the release for tracks that have
   // finished downloading in the background and still need their metadata
@@ -24,6 +25,8 @@ class PlayerService implements AbstractPlayerService {
   final AudioPlayer player = AudioPlayer();
   final BookmarkService _bookmarks;
   final MetadataService _metadata;
+  final Duration _downloadPollInterval;
+  final Duration _downloadTimeout;
   final _errorMessageController = StreamController<String>.broadcast();
   final _waitingController = StreamController<bool>.broadcast();
   final _trackMetadataUpdatedController =
@@ -56,9 +59,16 @@ class PlayerService implements AbstractPlayerService {
   bool _manualLoadInProgress = false;
   DateTime? _lastErrorEmitAt;
 
-  PlayerService._([BookmarkService? bookmarks, MetadataService? metadata])
-      : _bookmarks = bookmarks ?? BookmarkService.instance,
-        _metadata = metadata ?? MetadataService.instance {
+  PlayerService._([
+    BookmarkService? bookmarks,
+    MetadataService? metadata,
+    Duration? downloadPollInterval,
+    Duration? downloadTimeout,
+  ])  : _bookmarks = bookmarks ?? BookmarkService.instance,
+        _metadata = metadata ?? MetadataService.instance,
+        _downloadPollInterval =
+            downloadPollInterval ?? _defaultDownloadPollInterval,
+        _downloadTimeout = downloadTimeout ?? _defaultDownloadTimeout {
     _errorStreamSub = player.errorStream.listen(_handleMidPlaybackError);
     _processingStateSub = player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed && !_manualLoadInProgress) {
@@ -66,6 +76,16 @@ class PlayerService implements AbstractPlayerService {
       }
     });
   }
+
+  @visibleForTesting
+  factory PlayerService.forTest({
+    BookmarkService? bookmarks,
+    MetadataService? metadata,
+    Duration? downloadPollInterval,
+    Duration? downloadTimeout,
+  }) =>
+      PlayerService._(
+          bookmarks, metadata, downloadPollInterval, downloadTimeout);
 
   @override
   Release? currentRelease;
@@ -137,11 +157,6 @@ class PlayerService implements AbstractPlayerService {
     _setWaiting(false); // clear a stale spinner left by a superseded call
     final track = _queue[index];
 
-    // Every play action requests the whole release, not just this track —
-    // even if this track is already available, the rest of the release
-    // should still keep downloading in the background.
-    unawaited(_bookmarks.downloadRelease(currentRelease!.folderPath));
-
     if (!await _bookmarks.isFileAvailable(track.path)) {
       if (requestId != _loadRequestId) return;
       unawaited(_bookmarks.downloadFile(track.path));
@@ -151,10 +166,15 @@ class PlayerService implements AbstractPlayerService {
       _setWaiting(false);
       if (!available) {
         _emitErrorMessage(track.title);
-        await _advanceOrStop(index);
+        await _stopPlayback();
         return;
       }
     }
+
+    // The requested track is now confirmed available — only now request the
+    // rest of the release, so a release that can't even deliver its first
+    // requested track never triggers a download of the tracks behind it.
+    unawaited(_bookmarks.downloadRelease(currentRelease!.folderPath));
 
     if (requestId != _loadRequestId) return;
     final trackToPlay = await _ensureMetadataRead(track);
