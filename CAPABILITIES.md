@@ -112,7 +112,19 @@ writing a feature; remove or update it when behaviour changes.
 - If playback stops because no further track could be played, the mini player closes the same way
 - Whenever playback stops entirely (the queue finishes, runs out of playable tracks, or a download never completes), the lock screen and Control Center's now-playing display is cleared rather than continuing to show the last track that was loaded there
 - The lock screen and Control Center show play/pause and skip previous/next controls, and skipping via them behaves exactly like tapping the on-screen skip controls (including requesting a download and waiting if the target track isn't locally available) — not tied to whichever tracks happen to already be loaded into the audio player
+- On the first track of a release, the lock screen/Control Center/CarPlay skip previous control restarts the track from the beginning, rather than appearing enabled but doing nothing
+- On the last track of a release, the lock screen/Control Center/CarPlay skip next control skips to the end of the release — stopping playback and closing the mini player exactly as if the last track had finished — rather than appearing enabled but doing nothing
+- Elapsed time is sent to the lock screen/Control Center/CarPlay only when playback state changes (play, pause, seek, track change, buffering) — the system advances it between updates on its own
+- Dragging the lock screen/Control Center progress bar and releasing it seeks to the chosen position
 - The lock screen and Control Center's now-playing info (title, artist, album, and artwork) also updates to the newly requested track and release as soon as it's requested, rather than continuing to show the previous track's details until the new one finishes downloading and loading
+- Once a track has loaded and its duration is known, the lock screen and Control Center's now-playing info includes that duration, so their progress bar shows the elapsed time against the track's length (and can be scrubbed); while a track is still waiting to download, no duration is shown rather than the previous track's
+
+## CarPlay
+
+- The app is not a CarPlay app — it has no CarPlay entitlement, no icon on the CarPlay home screen, and no in-car browsing; releases are chosen on the phone
+- While audio is playing through a CarPlay-connected car, CarPlay's built-in Now Playing screen shows the same info as the lock screen (title, artist, album, artwork, duration, and elapsed time), and its play/pause and skip previous/next controls behave exactly like the lock screen's (see Playback)
+- Scrubbing CarPlay's Now Playing progress bar is not supported — CarPlay doesn't send the seek to an app without CarPlay support, so the bar snaps back to the current position when released
+- Audio is configured as music playback, so it keeps playing with the screen locked and routes through the car's speakers when connected; it pauses when the current audio route goes away (e.g. unplugging from the car or removing headphones) rather than switching to the phone's speaker, and pauses for interruptions such as phone calls
 
 ## Mini player
 

@@ -24,13 +24,15 @@ class SurfaceNoiseAudioHandler extends BaseAudioHandler {
   late final StreamSubscription _sequenceStateSub;
   late final StreamSubscription _playerStateSub;
   late final StreamSubscription _waitingSub;
-  late final StreamSubscription _positionSub;
+  late final StreamSubscription _playbackEventSub;
+  late final StreamSubscription _durationSub;
 
   SurfaceNoiseAudioHandler([PlayerService? player])
       : _player = player ?? PlayerService.instance {
     _sequenceStateSub =
         _player.sequenceStateStream.listen((_) => _broadcastMediaItem());
-    _playerStateSub = _player.playerStateStream.listen((_) => _broadcastState());
+    _playerStateSub =
+        _player.playerStateStream.listen((_) => _broadcastState());
     _waitingSub = _player.waitingForDownloadStream.listen((_) {
       // A newly requested track updates PlayerService.currentTrack /
       // currentRelease synchronously, well before just_audio has a loaded
@@ -41,7 +43,17 @@ class SurfaceNoiseAudioHandler extends BaseAudioHandler {
       _broadcastMediaItem();
       _broadcastState();
     });
-    _positionSub = _player.positionStream.listen((_) => _broadcastState());
+    // Rebroadcast on just_audio's discrete playback events (seeks, state
+    // and track changes), not on every position tick — iOS advances the
+    // now-playing elapsed time itself from the last update and playback
+    // rate, and constant updates interrupt a CarPlay progress-bar drag so
+    // the seek is never sent. Errors are PlayerService's to handle.
+    _playbackEventSub = _player.player.playbackEventStream
+        .listen((_) => _broadcastState(), onError: (Object _) {});
+    // A source's duration is only known once just_audio has loaded it,
+    // after its tag was first broadcast — rebroadcast so the lock screen/
+    // CarPlay progress bar gets a length to measure elapsed time against.
+    _durationSub = _player.durationStream.listen((_) => _broadcastMediaItem());
     _broadcastMediaItem();
     _broadcastState();
   }
@@ -66,7 +78,7 @@ class SurfaceNoiseAudioHandler extends BaseAudioHandler {
     final tagIsCurrent =
         tag != null && (pendingTrack == null || tag.id == pendingTrack.path);
     if (tagIsCurrent) {
-      mediaItem.add(tag);
+      mediaItem.add(tag.copyWith(duration: _player.player.duration));
       return;
     }
     final release = _player.currentRelease;
@@ -75,18 +87,22 @@ class SurfaceNoiseAudioHandler extends BaseAudioHandler {
       title: pendingTrack.title,
       artist: pendingTrack.artist ?? release?.albumArtist,
       album: release?.albumTitle ?? release?.name,
-      artUri:
-          release?.artPath != null ? Uri.file(release!.artPath!) : null,
+      artUri: release?.artPath != null ? Uri.file(release!.artPath!) : null,
     ));
   }
 
   void _broadcastState() {
     final playing = _player.player.playing;
     final controls = [
-      if (_player.hasPrevious) MediaControl.skipToPrevious,
+      // Always offered while a track is current — CarPlay shows a previous
+      // button even when the command is disabled, so on the first track it
+      // restarts the track instead (see skipToPrevious).
+      if (_player.currentTrack != null) MediaControl.skipToPrevious,
       if (playing) MediaControl.pause else MediaControl.play,
       MediaControl.stop,
-      if (_player.hasNext) MediaControl.skipToNext,
+      // Likewise always offered — on the last track it skips to the end of
+      // the release (see PlayerService.seekToNext).
+      if (_player.currentTrack != null) MediaControl.skipToNext,
     ];
     playbackState.add(playbackState.value.copyWith(
       controls: controls,
@@ -130,7 +146,9 @@ class SurfaceNoiseAudioHandler extends BaseAudioHandler {
   Future<void> skipToNext() => _player.seekToNext();
 
   @override
-  Future<void> skipToPrevious() => _player.seekToPrevious();
+  Future<void> skipToPrevious() => _player.hasPrevious
+      ? _player.seekToPrevious()
+      : _player.seek(Duration.zero);
 
   @override
   Future<void> stop() async {
@@ -142,6 +160,7 @@ class SurfaceNoiseAudioHandler extends BaseAudioHandler {
     await _sequenceStateSub.cancel();
     await _playerStateSub.cancel();
     await _waitingSub.cancel();
-    await _positionSub.cancel();
+    await _playbackEventSub.cancel();
+    await _durationSub.cancel();
   }
 }
