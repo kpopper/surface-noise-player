@@ -32,23 +32,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
           appBar: AppBar(
             title: const Text('Surface Noise'),
             actions: [
-              // TEMPORARY — see migration_export_service.dart. Remove this
-              // button once the TestFlight bundle-ID migration is done.
-              if (lib.rootPath != null)
-                IconButton(
-                  icon: const Icon(Icons.ios_share),
-                  tooltip: 'Export for migration',
-                  onPressed: lib.loading
-                      ? null
-                      : () async {
-                          await lib.exportForMigration();
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Migration data exported')),
-                          );
-                        },
-                ),
               IconButton(
                 icon: const Icon(Icons.folder_open),
                 tooltip: 'Choose library folder',

@@ -5,7 +5,6 @@ import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/services/library_provider.dart';
 import '../../helpers/fake_bookmark_service.dart';
 import '../../helpers/fake_library_service.dart';
-import '../../helpers/fake_migration_export_service.dart';
 
 Release makeRelease(String name,
         {List<String> tags = const [], DateTime? lastActivityAt}) =>
@@ -26,14 +25,12 @@ void main() {
 
   late FakeLibraryService fakeService;
   late FakeBookmarkService fakeBookmarks;
-  late FakeMigrationExportService fakeMigration;
   late LibraryProvider provider;
 
   setUp(() {
     fakeService = FakeLibraryService();
     fakeBookmarks = FakeBookmarkService();
-    fakeMigration = FakeMigrationExportService();
-    provider = LibraryProvider(fakeService, fakeBookmarks, fakeMigration);
+    provider = LibraryProvider(fakeService, fakeBookmarks);
   });
 
   tearDown(() => provider.dispose());
@@ -218,28 +215,6 @@ void main() {
       await provider.pickFolder();
       expect(provider.rootPath, isNull);
       expect(fakeService.syncedRoots, isEmpty);
-    });
-
-    // TEMPORARY — see migration_export_service.dart.
-    test('imports migration data on a fresh install (no prior root)',
-        () async {
-      fakeService.rootToReturn = '/music';
-      await provider.pickFolder();
-      expect(fakeMigration.importCallCount, 1);
-      expect(fakeMigration.importCalledWithRootPath, '/music');
-    });
-
-    // TEMPORARY — see migration_export_service.dart.
-    test('does not import migration data when a root was already set',
-        () async {
-      fakeService.rootToReturn = '/music';
-      await provider.init();
-      fakeMigration.importCallCount = 0;
-
-      fakeService.rootToReturn = '/new-music';
-      await provider.pickFolder();
-
-      expect(fakeMigration.importCallCount, 0);
     });
   });
 
@@ -764,26 +739,6 @@ void main() {
       await provider.init();
 
       expect(states, containsAllInOrder([true, false]));
-    });
-  });
-
-  // TEMPORARY — see migration_export_service.dart.
-  group('exportForMigration', () {
-    test('exports the current releases to the root path', () async {
-      fakeService.rootToReturn = '/music';
-      fakeService.releasesToReturn = [makeRelease('Album A')];
-      await provider.init();
-
-      await provider.exportForMigration();
-
-      expect(fakeMigration.exportCallCount, 1);
-      expect(fakeMigration.exportedRootPath, '/music');
-      expect(fakeMigration.exportedReleases?.map((r) => r.name), ['Album A']);
-    });
-
-    test('does nothing when no root is selected', () async {
-      await provider.exportForMigration();
-      expect(fakeMigration.exportCallCount, 0);
     });
   });
 }

@@ -136,15 +136,6 @@ writing a feature; remove or update it when behaviour changes.
 - Dismissed by tapping the close button or swiping down
 - Automatically closes itself if playback stops (e.g. the queue finishes or runs out of playable tracks) while it's open
 
-## Migration export/import (TEMPORARY — remove after TestFlight bundle-ID migration, see issue #42)
-
-- This whole section, and the code backing it, exists only to carry tags and activity timestamps across the TestFlight bundle-ID change (a new bundle ID makes iOS treat the app as brand new, so its local database is lost — the audio files, folder structure, and cover art on disk are unaffected since the library root lives outside the app's own container)
-- The library app bar has a temporary "Export for migration" button that writes a JSON file (tags and activity timestamps, keyed by release folder name, not full path) to the root of the current library folder
-- The export file is a plain file at the library root, so it is already ignored by scanning (root-level files are never treated as releases)
-- When a library folder is selected for the first time on a fresh install (i.e. no library root was previously saved), if an export file is found at that folder's root, its tags and activity timestamps are imported automatically and silently, keyed by matching folder name — no prompt is shown
-- Import does not touch releases/tracks — those are populated the normal way by the following library sync, and pick up the already-imported tags/activity once each release row exists
-- Once the app is confirmed working under the new bundle ID/TestFlight, delete `lib/services/migration_export_service.dart`, its test, the app bar button in `library_screen.dart`, and the `importIfPresent` call in `LibraryProvider.pickFolder()` — none of this is meant to ship as a permanent feature
-
 ## Library screen
 
 - On app launch, the screen body is blank — no empty-state prompt and no spinner — until the initial database load has determined whether a library root is selected (and, if one is, loaded its already-known releases); only then does it show the release list, the no-root CTA, or the no-releases CTA
