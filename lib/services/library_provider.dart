@@ -4,15 +4,23 @@ import 'package:flutter/painting.dart';
 import '../models/release.dart';
 import 'bookmark_service.dart';
 import 'library_service.dart';
+import 'migration_export_service.dart';
 
 enum LibrarySortMode { recency, alphabetical }
 
 class LibraryProvider extends ChangeNotifier {
   final LibraryService _svc;
   final BookmarkService _bookmarks;
-  LibraryProvider([LibraryService? svc, BookmarkService? bookmarks])
+  // TEMPORARY — see migration_export_service.dart. Remove this dependency
+  // (and its call sites below) once the TestFlight migration is done.
+  final MigrationExportService _migration;
+  LibraryProvider(
+      [LibraryService? svc,
+      BookmarkService? bookmarks,
+      MigrationExportService? migration])
       : _svc = svc ?? LibraryService.instance,
-        _bookmarks = bookmarks ?? BookmarkService.instance;
+        _bookmarks = bookmarks ?? BookmarkService.instance,
+        _migration = migration ?? MigrationExportService.instance;
 
   List<Release> _releases = [];
   final List<String> _activeTags = [];
@@ -62,6 +70,7 @@ class LibraryProvider extends ChangeNotifier {
   }
 
   Future<void> pickFolder() async {
+    final wasAlreadySet = rootPath != null;
     final path = await _svc.pickLibraryFolder();
     if (path != null) {
       rootPath = path;
@@ -71,8 +80,22 @@ class LibraryProvider extends ChangeNotifier {
       _releases = [];
       _activeTags.clear();
       _searchQuery = '';
+      // TEMPORARY — see migration_export_service.dart. Only on a fresh
+      // install (no root previously saved) so a returning user re-picking
+      // their existing folder never has tags/activity silently overwritten
+      // by an older export file.
+      if (!wasAlreadySet) {
+        await _migration.importIfPresent(rootPath!);
+      }
       await _syncInBackground(rootPath!);
     }
+  }
+
+  // TEMPORARY — see migration_export_service.dart. Writes the current
+  // tags/activity to the library root for a later fresh install to import.
+  Future<void> exportForMigration() async {
+    if (rootPath == null) return;
+    await _migration.exportTo(rootPath!, _releases);
   }
 
   Future<void> refresh() async {
