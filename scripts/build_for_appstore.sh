@@ -1,48 +1,39 @@
 #!/usr/bin/env bash
-# Builds a release IPA for App Store Connect/TestFlight, bumping the app
-# version, and opens the resulting archive in Xcode's Organizer for a
-# manual upload — `flutter build ipa` writes its archive into
-# build/ios/archive instead of Xcode's own Archives folder, so Organizer
-# never lists it on its own unless it's opened directly like this.
+# Builds a release IPA for App Store Connect/TestFlight and opens the
+# resulting archive in Xcode's Organizer for a manual upload —
+# `flutter build ipa` writes its archive into build/ios/archive instead of
+# Xcode's own Archives folder, so Organizer never lists it on its own
+# unless it's opened directly like this.
 #
-# Usage: bash scripts/build_for_appstore.sh [major|minor|patch]
-#   Defaults to a patch bump. The build number (the +N after the version)
-#   always increments by one regardless of which part is bumped, since App
-#   Store Connect rejects a build whose number isn't higher than every
-#   build previously uploaded for this app.
+# Usage: bash scripts/build_for_appstore.sh
+#
+# Nothing is committed. The version name (e.g. 1.0.1) comes from
+# pubspec.yaml and only changes when it's deliberately bumped there —
+# TestFlight accepts any number of builds of the same version. The build
+# number is generated from the current time (YYYYMMDDHHMM), so it always
+# increases, as App Store Connect requires, without having to record the
+# last one anywhere. The built commit is tagged testflight/<version>-<build>
+# locally as a record of what was uploaded.
 
 set -e
 
-BUMP="${1:-patch}"
-case "$BUMP" in
-  major|minor|patch) ;;
-  *)
-    echo "Usage: $0 [major|minor|patch]" >&2
-    exit 1
-    ;;
-esac
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Working tree has uncommitted changes — commit or stash them first," >&2
+  echo "so the testflight tag points at exactly what was built." >&2
+  exit 1
+fi
 
-CURRENT_VERSION=$(grep '^version:' pubspec.yaml)
-MAJOR=$(echo "$CURRENT_VERSION" | sed -E 's/version: ([0-9]+)\.([0-9]+)\.([0-9]+)\+([0-9]+)/\1/')
-MINOR=$(echo "$CURRENT_VERSION" | sed -E 's/version: ([0-9]+)\.([0-9]+)\.([0-9]+)\+([0-9]+)/\2/')
-PATCH=$(echo "$CURRENT_VERSION" | sed -E 's/version: ([0-9]+)\.([0-9]+)\.([0-9]+)\+([0-9]+)/\3/')
-BUILD_NUMBER=$(echo "$CURRENT_VERSION" | sed -E 's/version: ([0-9]+)\.([0-9]+)\.([0-9]+)\+([0-9]+)/\4/')
+VERSION_NAME=$(grep '^version:' pubspec.yaml | sed -E 's/version: ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+BUILD_NUMBER=$(date +%Y%m%d%H%M)
+TAG="testflight/${VERSION_NAME}-${BUILD_NUMBER}"
 
-case "$BUMP" in
-  major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-  minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-  patch) PATCH=$((PATCH + 1)) ;;
-esac
+echo "→ Building version ${VERSION_NAME} (${BUILD_NUMBER})…"
+flutter build ipa --release \
+  --build-name="$VERSION_NAME" \
+  --build-number="$BUILD_NUMBER"
 
-NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
-NEW_VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}"
-
-sed -i '' "s/^version: .*/version: ${NEW_VERSION_NAME}+${NEW_BUILD_NUMBER}/" pubspec.yaml
-git add pubspec.yaml
-git commit -m "Bump version to ${NEW_VERSION_NAME}+${NEW_BUILD_NUMBER} for TestFlight upload"
-
-echo "→ Building version ${NEW_VERSION_NAME}+${NEW_BUILD_NUMBER}…"
-flutter build ipa --release
+git tag "$TAG"
+echo "→ Tagged $(git rev-parse --short HEAD) as ${TAG} (local only — git push origin ${TAG} to share it)."
 
 open build/ios/archive/Runner.xcarchive
 echo "→ Opened the archive in Xcode Organizer — use Distribute App to upload it."
