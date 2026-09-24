@@ -6,8 +6,16 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- The app's only network activity is standard HTTPS (via the `http`
+	     package) to public APIs (MusicBrainz, iTunes) for artwork lookups —
+	     no proprietary encryption, and no encryption of stored data — so it
+	     qualifies for the export compliance exemption. Declaring this here
+	     means App Store Connect/Xcode stop asking on every upload. See
+	     https://developer.apple.com/documentation/security/complying_with_encryption_export_regulations -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleDisplayName</key>
-	<string>Surface Noise</string>
+	<string>$(APP_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
