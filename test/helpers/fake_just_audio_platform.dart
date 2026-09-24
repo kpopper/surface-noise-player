@@ -7,9 +7,13 @@ import 'package:just_audio_platform_interface/just_audio_platform_interface.dart
 // — for tests that are about orchestration logic built on top of just_audio,
 // not just_audio's own playback mechanics.
 class FakeJustAudioPlatform extends JustAudioPlatform {
+  // The duration every subsequently loaded source reports — null (unknown)
+  // by default, like a source whose length hasn't been determined yet.
+  Duration? loadDuration;
+
   @override
   Future<AudioPlayerPlatform> init(InitRequest request) async =>
-      FakeAudioPlayerPlatform(request.id);
+      FakeAudioPlayerPlatform(request.id, this);
 
   @override
   Future<DisposeAllPlayersResponse> disposeAllPlayers(
@@ -18,7 +22,9 @@ class FakeJustAudioPlatform extends JustAudioPlatform {
 }
 
 class FakeAudioPlayerPlatform extends AudioPlayerPlatform {
-  FakeAudioPlayerPlatform(super.id);
+  FakeAudioPlayerPlatform(super.id, this._platform);
+
+  final FakeJustAudioPlatform _platform;
 
   // just_audio's own _load() awaits the first non-"loading" processing
   // state derived from this stream before resolving — emit a "ready" event
@@ -32,7 +38,7 @@ class FakeAudioPlayerPlatform extends AudioPlayerPlatform {
             updateTime: DateTime.now(),
             updatePosition: Duration.zero,
             bufferedPosition: Duration.zero,
-            duration: null,
+            duration: _platform.loadDuration,
             icyMetadata: null,
             currentIndex: 0,
             androidAudioSessionId: null,
@@ -40,10 +46,13 @@ class FakeAudioPlayerPlatform extends AudioPlayerPlatform {
 
   @override
   Future<LoadResponse> load(LoadRequest request) async =>
-      LoadResponse(duration: null);
+      LoadResponse(duration: _platform.loadDuration);
 
   @override
   Future<PlayResponse> play(PlayRequest request) async => PlayResponse();
+
+  @override
+  Future<SeekResponse> seek(SeekRequest request) async => SeekResponse();
 
   @override
   Future<PauseResponse> pause(PauseRequest request) async => PauseResponse();

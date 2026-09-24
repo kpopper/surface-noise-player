@@ -120,7 +120,10 @@ class PlayerService implements AbstractPlayerService {
   @override
   Future<void> seekToPrevious() => _playAtIndex(_currentIndex - 1);
   @override
-  Future<void> seekToNext() => _playAtIndex(_currentIndex + 1);
+  // Past the last track this stops playback, the same as the last track
+  // finishing — only reachable from the native (lock screen/CarPlay)
+  // controls, since the on-screen next buttons are disabled there.
+  Future<void> seekToNext() => _advanceOrStop(_currentIndex);
   @override
   Future<void> seek(Duration position) => player.seek(position);
   @override
