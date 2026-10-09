@@ -10,17 +10,27 @@ import '../services/abstract_player_service.dart';
 import '../services/bookmark_service.dart';
 import '../services/library_provider.dart';
 import '../services/player_service.dart';
+import '../widgets/add_tag_prompt.dart';
 import '../widgets/tag_chip.dart';
 
 class ReleaseScreen extends StatefulWidget {
   final Release release;
   final AbstractPlayerService? playerService;
   final BookmarkService? bookmarkService;
+  // Set when shown in place of the wide layout's grid rather than as a
+  // pushed route: adds a back button, and is called instead of popping when
+  // the view should go away.
+  final VoidCallback? onClose;
+  // Empty space after the track list, e.g. to scroll clear of the wide
+  // layout's floating player.
+  final double bottomPadding;
   const ReleaseScreen({
     super.key,
     required this.release,
     this.playerService,
     this.bookmarkService,
+    this.onClose,
+    this.bottomPadding = 0,
   });
 
   @override
@@ -30,7 +40,6 @@ class ReleaseScreen extends StatefulWidget {
 class _ReleaseScreenState extends State<ReleaseScreen> {
   late AbstractPlayerService _playerSvc;
   late BookmarkService _bookmarks;
-  final _tagController = TextEditingController();
   Set<String> _unavailablePaths = {};
   List<String> _lastCheckedTrackPaths = [];
   bool _closing = false;
@@ -107,6 +116,10 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
     _closing = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (widget.onClose != null) {
+        widget.onClose!();
+        return;
+      }
       final route = ModalRoute.of(context);
       if (route != null && route.isCurrent) {
         Navigator.of(context).pop();
@@ -117,16 +130,7 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
   @override
   void dispose() {
     _availabilityPollTimer?.cancel();
-    _tagController.dispose();
     super.dispose();
-  }
-
-  Future<void> _addTag(Release release, String tag) async {
-    if (tag.trim().isEmpty) return;
-    await context
-        .read<LibraryProvider>()
-        .addTagToRelease(release, tag.trim().toLowerCase());
-    _tagController.clear();
   }
 
   Future<void> _removeTag(Release release, String tag) async {
@@ -141,70 +145,6 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
     } finally {
       if (mounted) setState(() => _rescanning = false);
     }
-  }
-
-  void _showAddTagDialog(Release release) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Add tag',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            FutureBuilder<List<String>>(
-              future: context.read<LibraryProvider>().allTags(),
-              builder: (context, snap) {
-                final existing = (snap.data ?? [])
-                    .where((t) => !release.tags.contains(t))
-                    .toList();
-                if (existing.isNotEmpty) {
-                  return Wrap(
-                    spacing: 8,
-                    children: existing
-                        .map((t) => ActionChip(
-                              label: Text(t),
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                _addTag(release, t);
-                              },
-                            ))
-                        .toList(),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _tagController,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: 'New tag…',
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _addTag(release, _tagController.text);
-                  },
-                ),
-              ),
-              onSubmitted: (v) {
-                Navigator.pop(ctx);
-                _addTag(release, v);
-              },
-              textCapitalization: TextCapitalization.none,
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -227,6 +167,14 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(release.name),
+        automaticallyImplyLeading: widget.onClose == null,
+        leading: widget.onClose == null
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back to library',
+                onPressed: widget.onClose,
+              ),
         actions: [
           if (_rescanning)
             const Padding(
@@ -262,9 +210,9 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                     // source, which can be well after a track is first
                     // requested and is still waiting to download.
                     final tag = snap.data?.currentSource?.tag as MediaItem?;
-                    final isThisRelease = _playerSvc.currentRelease
-                            ?.folderPath ==
-                        release.folderPath;
+                    final isThisRelease =
+                        _playerSvc.currentRelease?.folderPath ==
+                            release.folderPath;
                     final pendingPath =
                         isThisRelease ? _playerSvc.currentTrack?.path : null;
                     // A present tag can still be a previous track's, left
@@ -286,6 +234,7 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                     }
 
                     return ListView(
+                      padding: EdgeInsets.only(bottom: widget.bottomPadding),
                       children: [
                         if (release.artPath != null)
                           Image.file(
@@ -321,7 +270,7 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                                       avatar: const Icon(Icons.add, size: 16),
                                       label: const Text('Add tag'),
                                       onPressed: () =>
-                                          _showAddTagDialog(release),
+                                          showAddTagPrompt(context, release),
                                     ),
                                   ],
                                 ),

@@ -53,6 +53,19 @@ void main() {
       expect(fakeService.loadLibraryCallCount, 2);
     });
 
+    test(
+        'calling init again (e.g. after a layout switch) does not re-sync or reload',
+        () async {
+      fakeService.rootToReturn = '/music';
+      fakeService.releasesToReturn = [makeRelease('Album A')];
+
+      await provider.init();
+      await provider.init();
+
+      expect(fakeService.syncedRoots, ['/music']);
+      expect(fakeService.loadLibraryCallCount, 2);
+    });
+
     test('shows already-known releases before the sync completes', () async {
       fakeService.rootToReturn = '/music';
       fakeService.releasesToReturn = [makeRelease('Already Known')];

@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import '../services/abstract_player_service.dart';
 import '../services/player_service.dart';
 import 'art_thumbnail.dart';
+import 'now_playing_details.dart';
 
 class MiniPlayer extends StatelessWidget {
   final AbstractPlayerService? playerService;
@@ -28,28 +29,11 @@ class MiniPlayer extends StatelessWidget {
           stream: svc.waitingForDownloadStream,
           initialData: svc.isWaitingForDownload,
           builder: (context, waitingSnap) {
-            // The loaded MediaItem tag reflects what just_audio actually has
-            // queued; svc.currentTrack is set as soon as playback is
-            // requested, even before a download-wait completes and a source
-            // is loaded — fall back to it so the mini player (and its
-            // spinner) appear immediately rather than only once the track
-            // is playable.
-            final tag = seqSnap.data?.currentSource?.tag as MediaItem?;
-            final pendingTrack = svc.currentTrack;
-            if (tag == null && pendingTrack == null) {
-              return const SizedBox.shrink();
-            }
-            // A non-null tag can still be the *previous* track's — just_audio
-            // hasn't been given the newly requested track's source yet while
-            // it downloads. Only trust the tag once it actually matches what
-            // was requested; otherwise show the pending track/release's own
-            // details instead of stale ones.
-            final tagIsCurrent = tag != null &&
-                (pendingTrack == null || tag.id == pendingTrack.path);
-            final title = tagIsCurrent ? tag.title : pendingTrack!.title;
-            final album = tagIsCurrent
-                ? tag.album
-                : svc.currentRelease?.albumTitle ?? svc.currentRelease?.name;
+            final details = resolveNowPlayingDetails(
+                svc, seqSnap.data?.currentSource?.tag as MediaItem?);
+            if (details == null) return const SizedBox.shrink();
+            final title = details.title;
+            final album = details.album;
             final isWaiting = waitingSnap.data ?? false;
 
             return GestureDetector(

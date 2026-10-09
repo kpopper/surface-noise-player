@@ -3,7 +3,11 @@ import 'package:provider/provider.dart';
 import '../services/library_provider.dart';
 
 class LibrarySearchField extends StatefulWidget {
-  const LibrarySearchField({super.key});
+  // Lets the ⌘F shortcut (see AppShell) move focus here.
+  final FocusNode? focusNode;
+  // Called after the query is updated, on each keystroke or clear.
+  final ValueChanged<String>? onChanged;
+  const LibrarySearchField({super.key, this.focusNode, this.onChanged});
 
   @override
   State<LibrarySearchField> createState() => _LibrarySearchFieldState();
@@ -28,6 +32,7 @@ class _LibrarySearchFieldState extends State<LibrarySearchField> {
     }
     return TextField(
       controller: _controller,
+      focusNode: widget.focusNode,
       decoration: InputDecoration(
         hintText: 'Search artist or album…',
         prefixIcon: const Icon(Icons.search),
@@ -40,10 +45,14 @@ class _LibrarySearchFieldState extends State<LibrarySearchField> {
                 onPressed: () {
                   _controller.clear();
                   lib.setSearchQuery('');
+                  widget.onChanged?.call('');
                 },
               ),
       ),
-      onChanged: lib.setSearchQuery,
+      onChanged: (value) {
+        lib.setSearchQuery(value);
+        widget.onChanged?.call(value);
+      },
     );
   }
 }

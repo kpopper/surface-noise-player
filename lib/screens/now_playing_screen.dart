@@ -5,6 +5,8 @@ import 'package:audio_service/audio_service.dart';
 import '../services/abstract_player_service.dart';
 import '../services/player_service.dart';
 import '../widgets/art_thumbnail.dart';
+import '../widgets/now_playing_details.dart';
+import '../widgets/playback_progress.dart';
 
 class NowPlayingScreen extends StatefulWidget {
   final AbstractPlayerService? playerService;
@@ -16,7 +18,6 @@ class NowPlayingScreen extends StatefulWidget {
 
 class _NowPlayingScreenState extends State<NowPlayingScreen> {
   late AbstractPlayerService _svc;
-  double? _dragValue;
   double _dismissDragExtent = 0;
   StreamSubscription<SequenceState?>? _sequenceSub;
 
@@ -56,12 +57,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     }
   }
 
-  String _format(Duration d) {
-    final m = d.inMinutes;
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -91,32 +86,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               stream: _svc.waitingForDownloadStream,
               initialData: _svc.isWaitingForDownload,
               builder: (context, waitingSnap) {
-                // The loaded MediaItem tag reflects what just_audio actually
-                // has queued; _svc.currentTrack is set as soon as playback is
-                // requested, even before a download-wait completes and a
-                // source is loaded — fall back to it so this screen shows
-                // something immediately when opened during a download wait,
-                // rather than staying blank until just_audio has a source.
-                final tag = seqSnap.data?.currentSource?.tag as MediaItem?;
-                final pendingTrack = _svc.currentTrack;
-                if (tag == null && pendingTrack == null) {
-                  return const SizedBox.shrink();
-                }
-                // A non-null tag can still be the *previous* track's —
-                // just_audio hasn't been given the newly requested track's
-                // source yet while it downloads. Only trust the tag once it
-                // actually matches what was requested; otherwise show the
-                // pending track/release's own details instead of stale ones.
-                final tagIsCurrent = tag != null &&
-                    (pendingTrack == null || tag.id == pendingTrack.path);
-                final title = tagIsCurrent ? tag.title : pendingTrack!.title;
-                final artist = tagIsCurrent
-                    ? tag.artist
-                    : pendingTrack?.artist ?? _svc.currentRelease?.albumArtist;
-                final album = tagIsCurrent
-                    ? tag.album
-                    : _svc.currentRelease?.albumTitle ??
-                        _svc.currentRelease?.name;
+                final details = resolveNowPlayingDetails(
+                    _svc, seqSnap.data?.currentSource?.tag as MediaItem?);
+                if (details == null) return const SizedBox.shrink();
+                final (:title, :artist, :album) = details;
                 final isWaiting = waitingSnap.data ?? false;
 
                 return Padding(
@@ -158,59 +131,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         ),
                       ],
                       const SizedBox(height: 24),
-                      StreamBuilder<Duration?>(
-                        stream: _svc.durationStream,
-                        builder: (context, durSnap) {
-                          final duration = durSnap.data ?? Duration.zero;
-                          return StreamBuilder<Duration>(
-                            stream: _svc.positionStream,
-                            builder: (context, posSnap) {
-                              final position = posSnap.data ?? Duration.zero;
-                              final maxMs = duration.inMilliseconds.toDouble();
-                              final value = (_dragValue ??
-                                      position.inMilliseconds
-                                          .clamp(0, duration.inMilliseconds)
-                                          .toDouble())
-                                  .clamp(0, maxMs > 0 ? maxMs : 1)
-                                  .toDouble();
-
-                              return Column(
-                                children: [
-                                  Slider(
-                                    value: value,
-                                    max: maxMs > 0 ? maxMs : 1,
-                                    onChanged: (v) =>
-                                        setState(() => _dragValue = v),
-                                    onChangeEnd: (v) {
-                                      setState(() => _dragValue = null);
-                                      _svc.seek(
-                                          Duration(milliseconds: v.toInt()));
-                                    },
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(_format(position),
-                                            style: const TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey)),
-                                        Text(_format(duration),
-                                            style: const TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          );
-                        },
-                      ),
+                      PlaybackProgress(svc: _svc),
                       const SizedBox(height: 8),
                       StreamBuilder<PlayerState>(
                         stream: _svc.playerStateStream,
