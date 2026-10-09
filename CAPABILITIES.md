@@ -126,6 +126,15 @@ writing a feature; remove or update it when behaviour changes.
 - Scrubbing CarPlay's Now Playing progress bar is not supported — CarPlay doesn't send the seek to an app without CarPlay support, so the bar snaps back to the current position when released
 - Audio is configured as music playback, so it keeps playing with the screen locked and routes through the car's speakers when connected; it pauses when the current audio route goes away (e.g. unplugging from the car or removing headphones) rather than switching to the phone's speaker, and pauses for interruptions such as phone calls
 
+## macOS
+
+- The app runs on macOS as well as iOS, with the same library, tags, filtering, release, and playback behaviour described elsewhere in this file
+- The macOS app uses the same app icon as the iOS app
+- Choosing a library folder opens a standard macOS folder picker; the chosen folder is remembered across app restarts, the same as on iOS
+- iCloud Drive folders work the same as on iOS: tracks not yet downloaded are downloaded on request, and evicted the same way (see Library scanning and Playback)
+- macOS's Now Playing widget in Control Center and the keyboard media keys show the current track (title, artist, album, artwork, duration, elapsed time) and control playback, the same as the iOS lock screen and Control Center (see Playback)
+- The macOS app keeps its own local database: tags, play history, and activity timestamps are not shared with the iOS app, even when both point at the same iCloud Drive library folder
+
 ## Mini player
 
 - Visible at the bottom of every screen whenever something is playing or has been requested (even while still waiting for its first track to download)

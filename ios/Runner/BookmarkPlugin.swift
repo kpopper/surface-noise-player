@@ -1,17 +1,39 @@
+// Shared by the iOS and macOS Runner targets (macOS references this file
+// directly). Only folder picking and bookmark options differ per platform.
 import AVFoundation
+#if os(iOS)
 import Flutter
 import UIKit
 import UniformTypeIdentifiers
+#else
+import Cocoa
+import FlutterMacOS
+#endif
 
-class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
+class BookmarkPlugin: NSObject, FlutterPlugin {
     static let channelName = "com.yourname.surface_noise_player/bookmarks"
     static let defaultsKey = "library_bookmark"
+
+    // macOS sandboxed apps need a security-scoped bookmark to regain access
+    // to the folder after relaunch; iOS doesn't support (or need) the option.
+    #if os(iOS)
+    private static let bookmarkCreationOptions: URL.BookmarkCreationOptions = .minimalBookmark
+    private static let bookmarkResolutionOptions: URL.BookmarkResolutionOptions = []
+    #else
+    private static let bookmarkCreationOptions: URL.BookmarkCreationOptions = .withSecurityScope
+    private static let bookmarkResolutionOptions: URL.BookmarkResolutionOptions = .withSecurityScope
+    #endif
 
     private var pendingResult: FlutterResult?
     private var activeURL: URL?
 
     static func register(with registrar: FlutterPluginRegistrar) {
-        let channel = FlutterMethodChannel(name: channelName, binaryMessenger: registrar.messenger())
+        #if os(iOS)
+        let messenger = registrar.messenger()
+        #else
+        let messenger = registrar.messenger
+        #endif
+        let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
         let instance = BookmarkPlugin()
         registrar.addMethodCallDelegate(instance, channel: channel)
     }
@@ -84,6 +106,31 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
 
     // MARK: - Pick folder
 
+    #if os(macOS)
+    private func pickFolder(result: @escaping FlutterResult) {
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Choose Library"
+            panel.message = "Choose the folder containing your music library"
+
+            let completion: (NSApplication.ModalResponse) -> Void = { response in
+                guard response == .OK, let url = panel.url else {
+                    result(nil)
+                    return
+                }
+                self.didPickFolder(url, result: result)
+            }
+            if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+                panel.beginSheetModal(for: window, completionHandler: completion)
+            } else {
+                panel.begin(completionHandler: completion)
+            }
+        }
+    }
+    #else
     private func pickFolder(result: @escaping FlutterResult) {
         pendingResult = result
         let picker: UIDocumentPickerViewController
@@ -105,17 +152,15 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
             top.present(picker, animated: true)
         }
     }
+    #endif
 
-    // Called immediately while iOS security-scoped access is still open.
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        guard let url = urls.first, let result = pendingResult else { return }
-        pendingResult = nil
-
+    // Called immediately while the picker's security-scoped access is still open.
+    private func didPickFolder(_ url: URL, result: @escaping FlutterResult) {
         let accessed = url.startAccessingSecurityScopedResource()
 
         do {
             let bookmark = try url.bookmarkData(
-                options: .minimalBookmark,
+                options: BookmarkPlugin.bookmarkCreationOptions,
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             )
@@ -127,11 +172,6 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
             if accessed { url.stopAccessingSecurityScopedResource() }
             result(FlutterError(code: "BOOKMARK_FAILED", message: error.localizedDescription, details: nil))
         }
-    }
-
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        pendingResult?(nil)
-        pendingResult = nil
     }
 
     // MARK: - Resolve bookmark
@@ -148,7 +188,7 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
             var isStale = false
             let url = try URL(
                 resolvingBookmarkData: bookmark,
-                options: [],
+                options: BookmarkPlugin.bookmarkResolutionOptions,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
@@ -156,7 +196,7 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
                 result(FlutterError(code: "ACCESS_DENIED", message: "Could not access security-scoped resource", details: nil))
                 return
             }
-            if isStale, let fresh = try? url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil) {
+            if isStale, let fresh = try? url.bookmarkData(options: BookmarkPlugin.bookmarkCreationOptions, includingResourceValuesForKeys: nil, relativeTo: nil) {
                 UserDefaults.standard.set(fresh, forKey: BookmarkPlugin.defaultsKey)
             }
             activeURL = url
@@ -353,3 +393,18 @@ class BookmarkPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
         activeURL = nil
     }
 }
+
+#if os(iOS)
+extension BookmarkPlugin: UIDocumentPickerDelegate {
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let url = urls.first, let result = pendingResult else { return }
+        pendingResult = nil
+        didPickFolder(url, result: result)
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        pendingResult?(nil)
+        pendingResult = nil
+    }
+}
+#endif
