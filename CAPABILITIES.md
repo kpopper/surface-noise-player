@@ -129,6 +129,7 @@ writing a feature; remove or update it when behaviour changes.
 ## macOS
 
 - The app runs on macOS as well as iOS, with the same library, tags, filtering, release, and playback behaviour described elsewhere in this file
+- The macOS app uses the same app icon as the iOS app
 - Choosing a library folder opens a standard macOS folder picker; the chosen folder is remembered across app restarts, the same as on iOS
 - iCloud Drive folders work the same as on iOS: tracks not yet downloaded are downloaded on request, and evicted the same way (see Library scanning and Playback)
 - macOS's Now Playing widget in Control Center and the keyboard media keys show the current track (title, artist, album, artwork, duration, elapsed time) and control playback, the same as the iOS lock screen and Control Center (see Playback)
