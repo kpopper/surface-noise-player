@@ -10,17 +10,32 @@ import '../services/abstract_player_service.dart';
 import '../services/bookmark_service.dart';
 import '../services/library_provider.dart';
 import '../services/player_service.dart';
+import '../widgets/add_tag_prompt.dart';
 import '../widgets/tag_chip.dart';
 
 class ReleaseScreen extends StatefulWidget {
   final Release release;
   final AbstractPlayerService? playerService;
   final BookmarkService? bookmarkService;
+  // Set when shown in place of the wide layout's grid rather than as a
+  // pushed route: adds a back button, and is called instead of popping when
+  // the view should go away.
+  final VoidCallback? onClose;
+  // Empty space after the track list, e.g. to scroll clear of the wide
+  // layout's floating player.
+  final double bottomPadding;
+  // Wide layout: artwork in the left half, title, tags and tracks in the
+  // right half, all scrolling together — instead of the phone's full-width
+  // artwork header above the track list.
+  final bool wide;
   const ReleaseScreen({
     super.key,
     required this.release,
     this.playerService,
     this.bookmarkService,
+    this.onClose,
+    this.bottomPadding = 0,
+    this.wide = false,
   });
 
   @override
@@ -30,7 +45,6 @@ class ReleaseScreen extends StatefulWidget {
 class _ReleaseScreenState extends State<ReleaseScreen> {
   late AbstractPlayerService _playerSvc;
   late BookmarkService _bookmarks;
-  final _tagController = TextEditingController();
   Set<String> _unavailablePaths = {};
   List<String> _lastCheckedTrackPaths = [];
   bool _closing = false;
@@ -107,6 +121,10 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
     _closing = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (widget.onClose != null) {
+        widget.onClose!();
+        return;
+      }
       final route = ModalRoute.of(context);
       if (route != null && route.isCurrent) {
         Navigator.of(context).pop();
@@ -117,16 +135,7 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
   @override
   void dispose() {
     _availabilityPollTimer?.cancel();
-    _tagController.dispose();
     super.dispose();
-  }
-
-  Future<void> _addTag(Release release, String tag) async {
-    if (tag.trim().isEmpty) return;
-    await context
-        .read<LibraryProvider>()
-        .addTagToRelease(release, tag.trim().toLowerCase());
-    _tagController.clear();
   }
 
   Future<void> _removeTag(Release release, String tag) async {
@@ -141,70 +150,6 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
     } finally {
       if (mounted) setState(() => _rescanning = false);
     }
-  }
-
-  void _showAddTagDialog(Release release) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Add tag',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            FutureBuilder<List<String>>(
-              future: context.read<LibraryProvider>().allTags(),
-              builder: (context, snap) {
-                final existing = (snap.data ?? [])
-                    .where((t) => !release.tags.contains(t))
-                    .toList();
-                if (existing.isNotEmpty) {
-                  return Wrap(
-                    spacing: 8,
-                    children: existing
-                        .map((t) => ActionChip(
-                              label: Text(t),
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                _addTag(release, t);
-                              },
-                            ))
-                        .toList(),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _tagController,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: 'New tag…',
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _addTag(release, _tagController.text);
-                  },
-                ),
-              ),
-              onSubmitted: (v) {
-                Navigator.pop(ctx);
-                _addTag(release, v);
-              },
-              textCapitalization: TextCapitalization.none,
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -226,7 +171,16 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(release.name),
+        // The wide layout shows the title in the content beside the artwork.
+        title: widget.wide ? null : Text(release.name),
+        automaticallyImplyLeading: widget.onClose == null,
+        leading: widget.onClose == null
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back to library',
+                onPressed: widget.onClose,
+              ),
         actions: [
           if (_rescanning)
             const Padding(
@@ -262,9 +216,9 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                     // source, which can be well after a track is first
                     // requested and is still waiting to download.
                     final tag = snap.data?.currentSource?.tag as MediaItem?;
-                    final isThisRelease = _playerSvc.currentRelease
-                            ?.folderPath ==
-                        release.folderPath;
+                    final isThisRelease =
+                        _playerSvc.currentRelease?.folderPath ==
+                            release.folderPath;
                     final pendingPath =
                         isThisRelease ? _playerSvc.currentTrack?.path : null;
                     // A present tag can still be a previous track's, left
@@ -276,6 +230,15 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                         : pendingPath;
                     final isWaiting = waitingSnap.data ?? false;
 
+                    final tracks = List.generate(
+                        release.tracks.length,
+                        (i) => _trackTile(release, i,
+                            isPlaying: isThisRelease &&
+                                currentPath == release.tracks[i].path,
+                            isWaiting: isWaiting));
+
+                    if (widget.wide) return _buildWideBody(release, tracks);
+
                     if (release.tracks.isEmpty) {
                       return const Center(
                         child: Text(
@@ -286,100 +249,19 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                     }
 
                     return ListView(
+                      padding: EdgeInsets.only(bottom: widget.bottomPadding),
                       children: [
                         if (release.artPath != null)
-                          Image.file(
-                            File(release.artPath!),
-                            // Bypasses Flutter's image cache, which is keyed
-                            // by file path — without this, artwork that gets
-                            // re-resolved at the same path (e.g. cover.jpg
-                            // rewritten after a bad MusicBrainz match is
-                            // cleared and retried) would keep showing
-                            // whatever was cached for that path, not the new
-                            // file's actual bytes.
-                            key: ValueKey(release.artPath),
-                            width: double.infinity,
-                            fit: BoxFit.fitWidth,
-                            errorBuilder: (_, __, ___) =>
-                                const SizedBox.shrink(),
-                          ),
+                          _artworkImage(release,
+                              width: double.infinity, fit: BoxFit.fitWidth),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                           child: Row(
-                            children: [
-                              Expanded(
-                                child: Wrap(
-                                  spacing: 8,
-                                  runSpacing: 4,
-                                  children: [
-                                    ...release.tags.map((t) => TagChip(
-                                          label: t,
-                                          onDeleted: () =>
-                                              _removeTag(release, t),
-                                        )),
-                                    ActionChip(
-                                      avatar: const Icon(Icons.add, size: 16),
-                                      label: const Text('Add tag'),
-                                      onPressed: () =>
-                                          _showAddTagDialog(release),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                            children: [Expanded(child: _tags(release))],
                           ),
                         ),
                         const Divider(),
-                        ...List.generate(release.tracks.length, (i) {
-                          final track = release.tracks[i];
-                          final isPlaying =
-                              isThisRelease && currentPath == track.path;
-                          // Not yet downloaded locally — still tappable; playing it
-                          // triggers a download and waits for it (see PlayerService).
-                          final isUnavailable =
-                              _unavailablePaths.contains(track.path);
-                          return ListTile(
-                            leading: isPlaying && isWaiting
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : isPlaying
-                                    ? const Icon(Icons.equalizer,
-                                        color: Colors.deepOrange)
-                                    : isUnavailable
-                                        ? Icon(Icons.cloud_download_outlined,
-                                            color: Colors.grey[500], size: 20)
-                                        : Text('${track.trackNumber}',
-                                            style: const TextStyle(
-                                                color: Colors.grey)),
-                            title: Text(
-                              track.title,
-                              style: TextStyle(
-                                fontWeight: isPlaying
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                color: isPlaying ? Colors.deepOrange : null,
-                              ),
-                            ),
-                            // Always render a subtitle line, even when
-                            // there's no artist yet — otherwise the row's
-                            // height changes (and the whole list jumps)
-                            // right when a track's real metadata arrives
-                            // and it suddenly gains one.
-                            subtitle: Text(track.artist ?? '',
-                                style: const TextStyle(fontSize: 12)),
-                            // Tapping the row that's already spinning cancels
-                            // that wait instead of re-requesting the same
-                            // track, so you don't have to sit through the
-                            // full download timeout to back out of it.
-                            onTap: isPlaying && isWaiting
-                                ? _playerSvc.cancelDownloadWait
-                                : () => _playerSvc.playTrack(release, i),
-                          );
-                        }),
+                        ...tracks,
                       ],
                     );
                   },
@@ -389,6 +271,159 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _artworkImage(Release release,
+      {required double width, required BoxFit fit, Widget? onError}) {
+    return Image.file(
+      File(release.artPath!),
+      // Bypasses Flutter's image cache, which is keyed by file path —
+      // without this, artwork that gets re-resolved at the same path (e.g.
+      // cover.jpg rewritten after a bad MusicBrainz match is cleared and
+      // retried) would keep showing whatever was cached for that path, not
+      // the new file's actual bytes.
+      key: ValueKey(release.artPath),
+      width: width,
+      fit: fit,
+      errorBuilder: (_, __, ___) => onError ?? const SizedBox.shrink(),
+    );
+  }
+
+  Widget _tags(Release release) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        ...release.tags.map((t) => TagChip(
+              label: t,
+              onDeleted: () => _removeTag(release, t),
+            )),
+        ActionChip(
+          avatar: const Icon(Icons.add, size: 16),
+          label: const Text('Add tag'),
+          onPressed: () => showAddTagPrompt(context, release),
+        ),
+      ],
+    );
+  }
+
+  Widget _trackTile(Release release, int i,
+      {required bool isPlaying, required bool isWaiting}) {
+    final track = release.tracks[i];
+    // Not yet downloaded locally — still tappable; playing it triggers a
+    // download and waits for it (see PlayerService).
+    final isUnavailable = _unavailablePaths.contains(track.path);
+    return ListTile(
+      leading: isPlaying && isWaiting
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : isPlaying
+              ? const Icon(Icons.equalizer, color: Colors.deepOrange)
+              : isUnavailable
+                  ? Icon(Icons.cloud_download_outlined,
+                      color: Colors.grey[500], size: 20)
+                  : Text('${track.trackNumber}',
+                      style: const TextStyle(color: Colors.grey)),
+      title: Text(
+        track.title,
+        style: TextStyle(
+          fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+          color: isPlaying ? Colors.deepOrange : null,
+        ),
+      ),
+      // Always render a subtitle line, even when there's no artist yet —
+      // otherwise the row's height changes (and the whole list jumps) right
+      // when a track's real metadata arrives and it suddenly gains one.
+      subtitle: Text(track.artist ?? '', style: const TextStyle(fontSize: 12)),
+      // Tapping the row that's already spinning cancels that wait instead of
+      // re-requesting the same track, so you don't have to sit through the
+      // full download timeout to back out of it.
+      onTap: isPlaying && isWaiting
+          ? _playerSvc.cancelDownloadWait
+          : () => _playerSvc.playTrack(release, i),
+    );
+  }
+
+  Widget _buildWideBody(Release release, List<Widget> tracks) {
+    final textTheme = Theme.of(context).textTheme;
+    final placeholder = Container(
+      color: Colors.grey[800],
+      child: Icon(Icons.album, color: Colors.grey[600], size: 96),
+    );
+    // "Artist - Album" is already the release name when both are known, so
+    // split it back into a title and an artist line beneath it.
+    final hasTags = release.albumTitle != null && release.albumArtist != null;
+    final title = hasTags ? release.albumTitle! : release.name;
+    final artist = hasTags ? release.albumArtist : null;
+
+    return ListView(
+      padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + widget.bottomPadding),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: release.artPath == null
+                          ? placeholder
+                          : _artworkImage(release,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              onError: placeholder),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 32),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            style: textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.bold)),
+                        if (artist != null)
+                          Text(artist,
+                              style: textTheme.titleMedium
+                                  ?.copyWith(color: Colors.grey)),
+                        const SizedBox(height: 16),
+                        _tags(release),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(),
+                  if (tracks.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('No tracks found yet',
+                          style: TextStyle(color: Colors.grey)),
+                    )
+                  else
+                    ...tracks,
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

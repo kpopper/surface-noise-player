@@ -37,6 +37,8 @@ class FakePlayerService implements AbstractPlayerService {
   int? lastPlayedTrackIndex;
   int playReleaseCallCount = 0;
   Duration? seekedTo;
+  int seekToNextCallCount = 0;
+  int seekToPreviousCallCount = 0;
 
   @override
   Stream<SequenceState?> get sequenceStateStream =>
@@ -68,10 +70,10 @@ class FakePlayerService implements AbstractPlayerService {
   Future<void> pause() async => pauseCalled = true;
 
   @override
-  Future<void> seekToPrevious() async {}
+  Future<void> seekToPrevious() async => seekToPreviousCallCount++;
 
   @override
-  Future<void> seekToNext() async {}
+  Future<void> seekToNext() async => seekToNextCallCount++;
 
   @override
   Future<void> seek(Duration position) async => seekedTo = position;
@@ -117,6 +119,10 @@ class FakePlayerService implements AbstractPlayerService {
   }) {
     _playerStateController.add(PlayerState(playing, processingState));
   }
+
+  void emitPosition(Duration position) => _positionController.add(position);
+
+  void emitDuration(Duration? duration) => _durationController.add(duration);
 
   void emitErrorMessage(String message) {
     _errorMessageController.add(message);

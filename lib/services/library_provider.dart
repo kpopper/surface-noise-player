@@ -41,7 +41,14 @@ class LibraryProvider extends ChangeNotifier {
   String get searchQuery => _searchQuery;
   LibrarySortMode get sortMode => _sortMode;
 
-  Future<void> init() async {
+  // Runs once per provider: later calls (e.g. LibraryScreen being rebuilt
+  // when the window is resized across the wide-layout breakpoint) share the
+  // first call's future rather than re-resolving the bookmark and starting
+  // another sync.
+  Future<void>? _initFuture;
+  Future<void> init() => _initFuture ??= _init();
+
+  Future<void> _init() async {
     final bookmarkedPath = await _bookmarks.resolveBookmark();
     rootPath = bookmarkedPath ?? await _svc.getSavedRoot();
     if (rootPath != null) {
