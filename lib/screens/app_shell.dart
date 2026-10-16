@@ -83,13 +83,30 @@ class _AppShellState extends State<AppShell> {
   void _selectRelease(Release? release) =>
       setState(() => _selectedRelease = release);
 
+  // In the wide layout the search field is only in the Library view, so an
+  // open release is closed first and the field focused once it's built.
+  void _focusSearch(bool wide) {
+    if (!wide) {
+      _narrowSearchFocus.requestFocus();
+      return;
+    }
+    if (_selectedRelease == null) {
+      _wideSearchFocus.requestFocus();
+      return;
+    }
+    _selectRelease(null);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _wideSearchFocus.requestFocus();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final wide = isWideLayout(context);
     return PlaybackShortcuts(
       svc: _svc,
       isPlaying: () => _playing,
-      searchFocusNode: () => wide ? _wideSearchFocus : _narrowSearchFocus,
+      onFocusSearch: () => _focusSearch(wide),
       child: wide ? _buildWide() : _buildNarrow(),
     );
   }
@@ -116,6 +133,7 @@ class _AppShellState extends State<AppShell> {
                     bookmarkService: widget.bookmarkService,
                     onClose: () => _selectRelease(null),
                     bottomPadding: kFloatingPlayerClearance,
+                    wide: true,
                   ),
           ),
           Positioned(

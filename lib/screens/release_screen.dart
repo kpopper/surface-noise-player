@@ -24,6 +24,10 @@ class ReleaseScreen extends StatefulWidget {
   // Empty space after the track list, e.g. to scroll clear of the wide
   // layout's floating player.
   final double bottomPadding;
+  // Wide layout: artwork in the left half, title, tags and tracks in the
+  // right half, all scrolling together — instead of the phone's full-width
+  // artwork header above the track list.
+  final bool wide;
   const ReleaseScreen({
     super.key,
     required this.release,
@@ -31,6 +35,7 @@ class ReleaseScreen extends StatefulWidget {
     this.bookmarkService,
     this.onClose,
     this.bottomPadding = 0,
+    this.wide = false,
   });
 
   @override
@@ -166,7 +171,8 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(release.name),
+        // The wide layout shows the title in the content beside the artwork.
+        title: widget.wide ? null : Text(release.name),
         automaticallyImplyLeading: widget.onClose == null,
         leading: widget.onClose == null
             ? null
@@ -224,6 +230,15 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                         : pendingPath;
                     final isWaiting = waitingSnap.data ?? false;
 
+                    final tracks = List.generate(
+                        release.tracks.length,
+                        (i) => _trackTile(release, i,
+                            isPlaying: isThisRelease &&
+                                currentPath == release.tracks[i].path,
+                            isWaiting: isWaiting));
+
+                    if (widget.wide) return _buildWideBody(release, tracks);
+
                     if (release.tracks.isEmpty) {
                       return const Center(
                         child: Text(
@@ -237,98 +252,16 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
                       padding: EdgeInsets.only(bottom: widget.bottomPadding),
                       children: [
                         if (release.artPath != null)
-                          Image.file(
-                            File(release.artPath!),
-                            // Bypasses Flutter's image cache, which is keyed
-                            // by file path — without this, artwork that gets
-                            // re-resolved at the same path (e.g. cover.jpg
-                            // rewritten after a bad MusicBrainz match is
-                            // cleared and retried) would keep showing
-                            // whatever was cached for that path, not the new
-                            // file's actual bytes.
-                            key: ValueKey(release.artPath),
-                            width: double.infinity,
-                            fit: BoxFit.fitWidth,
-                            errorBuilder: (_, __, ___) =>
-                                const SizedBox.shrink(),
-                          ),
+                          _artworkImage(release,
+                              width: double.infinity, fit: BoxFit.fitWidth),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                           child: Row(
-                            children: [
-                              Expanded(
-                                child: Wrap(
-                                  spacing: 8,
-                                  runSpacing: 4,
-                                  children: [
-                                    ...release.tags.map((t) => TagChip(
-                                          label: t,
-                                          onDeleted: () =>
-                                              _removeTag(release, t),
-                                        )),
-                                    ActionChip(
-                                      avatar: const Icon(Icons.add, size: 16),
-                                      label: const Text('Add tag'),
-                                      onPressed: () =>
-                                          showAddTagPrompt(context, release),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                            children: [Expanded(child: _tags(release))],
                           ),
                         ),
                         const Divider(),
-                        ...List.generate(release.tracks.length, (i) {
-                          final track = release.tracks[i];
-                          final isPlaying =
-                              isThisRelease && currentPath == track.path;
-                          // Not yet downloaded locally — still tappable; playing it
-                          // triggers a download and waits for it (see PlayerService).
-                          final isUnavailable =
-                              _unavailablePaths.contains(track.path);
-                          return ListTile(
-                            leading: isPlaying && isWaiting
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : isPlaying
-                                    ? const Icon(Icons.equalizer,
-                                        color: Colors.deepOrange)
-                                    : isUnavailable
-                                        ? Icon(Icons.cloud_download_outlined,
-                                            color: Colors.grey[500], size: 20)
-                                        : Text('${track.trackNumber}',
-                                            style: const TextStyle(
-                                                color: Colors.grey)),
-                            title: Text(
-                              track.title,
-                              style: TextStyle(
-                                fontWeight: isPlaying
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                color: isPlaying ? Colors.deepOrange : null,
-                              ),
-                            ),
-                            // Always render a subtitle line, even when
-                            // there's no artist yet — otherwise the row's
-                            // height changes (and the whole list jumps)
-                            // right when a track's real metadata arrives
-                            // and it suddenly gains one.
-                            subtitle: Text(track.artist ?? '',
-                                style: const TextStyle(fontSize: 12)),
-                            // Tapping the row that's already spinning cancels
-                            // that wait instead of re-requesting the same
-                            // track, so you don't have to sit through the
-                            // full download timeout to back out of it.
-                            onTap: isPlaying && isWaiting
-                                ? _playerSvc.cancelDownloadWait
-                                : () => _playerSvc.playTrack(release, i),
-                          );
-                        }),
+                        ...tracks,
                       ],
                     );
                   },
@@ -338,6 +271,159 @@ class _ReleaseScreenState extends State<ReleaseScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _artworkImage(Release release,
+      {required double width, required BoxFit fit, Widget? onError}) {
+    return Image.file(
+      File(release.artPath!),
+      // Bypasses Flutter's image cache, which is keyed by file path —
+      // without this, artwork that gets re-resolved at the same path (e.g.
+      // cover.jpg rewritten after a bad MusicBrainz match is cleared and
+      // retried) would keep showing whatever was cached for that path, not
+      // the new file's actual bytes.
+      key: ValueKey(release.artPath),
+      width: width,
+      fit: fit,
+      errorBuilder: (_, __, ___) => onError ?? const SizedBox.shrink(),
+    );
+  }
+
+  Widget _tags(Release release) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        ...release.tags.map((t) => TagChip(
+              label: t,
+              onDeleted: () => _removeTag(release, t),
+            )),
+        ActionChip(
+          avatar: const Icon(Icons.add, size: 16),
+          label: const Text('Add tag'),
+          onPressed: () => showAddTagPrompt(context, release),
+        ),
+      ],
+    );
+  }
+
+  Widget _trackTile(Release release, int i,
+      {required bool isPlaying, required bool isWaiting}) {
+    final track = release.tracks[i];
+    // Not yet downloaded locally — still tappable; playing it triggers a
+    // download and waits for it (see PlayerService).
+    final isUnavailable = _unavailablePaths.contains(track.path);
+    return ListTile(
+      leading: isPlaying && isWaiting
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : isPlaying
+              ? const Icon(Icons.equalizer, color: Colors.deepOrange)
+              : isUnavailable
+                  ? Icon(Icons.cloud_download_outlined,
+                      color: Colors.grey[500], size: 20)
+                  : Text('${track.trackNumber}',
+                      style: const TextStyle(color: Colors.grey)),
+      title: Text(
+        track.title,
+        style: TextStyle(
+          fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+          color: isPlaying ? Colors.deepOrange : null,
+        ),
+      ),
+      // Always render a subtitle line, even when there's no artist yet —
+      // otherwise the row's height changes (and the whole list jumps) right
+      // when a track's real metadata arrives and it suddenly gains one.
+      subtitle: Text(track.artist ?? '', style: const TextStyle(fontSize: 12)),
+      // Tapping the row that's already spinning cancels that wait instead of
+      // re-requesting the same track, so you don't have to sit through the
+      // full download timeout to back out of it.
+      onTap: isPlaying && isWaiting
+          ? _playerSvc.cancelDownloadWait
+          : () => _playerSvc.playTrack(release, i),
+    );
+  }
+
+  Widget _buildWideBody(Release release, List<Widget> tracks) {
+    final textTheme = Theme.of(context).textTheme;
+    final placeholder = Container(
+      color: Colors.grey[800],
+      child: Icon(Icons.album, color: Colors.grey[600], size: 96),
+    );
+    // "Artist - Album" is already the release name when both are known, so
+    // split it back into a title and an artist line beneath it.
+    final hasTags = release.albumTitle != null && release.albumArtist != null;
+    final title = hasTags ? release.albumTitle! : release.name;
+    final artist = hasTags ? release.albumArtist : null;
+
+    return ListView(
+      padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + widget.bottomPadding),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: release.artPath == null
+                          ? placeholder
+                          : _artworkImage(release,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              onError: placeholder),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 32),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            style: textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.bold)),
+                        if (artist != null)
+                          Text(artist,
+                              style: textTheme.titleMedium
+                                  ?.copyWith(color: Colors.grey)),
+                        const SizedBox(height: 16),
+                        _tags(release),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(),
+                  if (tracks.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('No tracks found yet',
+                          style: TextStyle(color: Colors.grey)),
+                    )
+                  else
+                    ...tracks,
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

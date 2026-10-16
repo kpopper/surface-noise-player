@@ -40,15 +40,15 @@ class PlaybackShortcuts extends StatelessWidget {
   final AbstractPlayerService svc;
   // Whether playback is currently running, so Space knows which way to go.
   final bool Function() isPlaying;
-  // The search field ⌘F should focus — whichever layout is showing.
-  final FocusNode Function() searchFocusNode;
+  // ⌘F: focus the library search field (see AppShell).
+  final VoidCallback onFocusSearch;
   final Widget child;
 
   const PlaybackShortcuts({
     super.key,
     required this.svc,
     required this.isPlaying,
-    required this.searchFocusNode,
+    required this.onFocusSearch,
     required this.child,
   });
 
@@ -88,7 +88,7 @@ class PlaybackShortcuts extends StatelessWidget {
           ),
           _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
             onInvoke: (_) {
-              searchFocusNode().requestFocus();
+              onFocusSearch();
               return null;
             },
           ),

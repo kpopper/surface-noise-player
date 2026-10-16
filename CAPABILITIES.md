@@ -140,14 +140,17 @@ writing a feature; remove or update it when behaviour changes.
 
 - When the window is at least 900 points wide (e.g. the macOS app at its default size), the app switches to a wide layout; narrower windows, and the iPhone, keep the layout described in the rest of this file
 - Resizing the window across that width switches layouts without restarting the library sync or re-running the initial load
-- The wide layout has a sidebar on the left holding the search field, the sort toggle, a Home item, and a vertical list of every tag
+- The wide layout is split into two panels, like Apple Music: a sidebar on the left running the full height of the window, and a main panel on the right with its own navigation bar above its content
+- The sidebar holds a Home item and a vertical list of every tag
+- When the grid is showing, the main panel's navigation bar is titled "Library" and holds the search field, the sort toggle, the choose-library-folder button, and the refresh button (with the same behaviour as on the phone layout); search is only available from the Library view, not while a release is showing
 - Clicking a tag in the sidebar toggles it as a filter, with the same AND logic as the filter chips (see Tag filtering); active tags are highlighted in their tag colour
 - When there are no tags yet, the sidebar says so instead of showing an empty list
 - Releases are shown as a grid of square cover-art tiles (or placeholders), each with the release name and its tags or track count beneath, in the same order and with the same filtering as the list (see Library sorting)
-- Clicking a release tile shows that release in place of the grid, with the sidebar still alongside it
-- The release view behaves the same as the release screen (see Release screen) — including tags, rescan, availability, and tapping a track to play — and has a back button in its header that returns to the grid
+- Clicking a release tile shows that release in place of the grid, with the sidebar still alongside it; the release's own navigation bar replaces the Library one, holding a back button that returns to the grid and the rescan button
+- The release view shows the cover art (or a placeholder) as a padded square in the left half of the main panel, and the release title, album artist (when known), tags, and track list in the right half beside it; the whole view scrolls as one
+- The release view otherwise behaves the same as the release screen (see Release screen) — including tags, rescan, availability, and tapping a track to play
 - The sidebar's Home item also returns to the grid from a release, and is highlighted whenever the grid is showing
-- Clicking a tag in the sidebar or typing in the search field while a release is showing also returns to the grid, so the filter's results are visible
+- Clicking a tag in the sidebar while a release is showing also returns to the grid, so the filter's results are visible
 - Returning to the grid keeps its scroll position from before the release was opened
 - If the release being shown is removed from the library, the view returns to the grid by itself
 - Right-clicking a release tile shows a menu with "Add tag…" and "Rescan metadata", which behave the same as the release screen's add-tag and rescan controls
@@ -162,7 +165,7 @@ writing a feature; remove or update it when behaviour changes.
 
 - Space toggles play/pause, except while typing in a text field (where it types a space as normal); while a track is waiting to download, Space cancels the wait, the same as clicking the spinner that replaces the play/pause control
 - ⌘→ skips to the next track and ⌘← to the previous track, the same as the on-screen skip controls, and only when those controls are enabled; while typing in a text field they move the cursor as normal instead
-- ⌘F moves focus to the library search field
+- ⌘F moves focus to the library search field; in the wide layout, if a release is showing, it first returns to the Library view so the search field is there to focus
 
 ## Mini player
 

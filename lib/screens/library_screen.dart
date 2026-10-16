@@ -73,45 +73,50 @@ class _LibraryScreenState extends State<LibraryScreen> {
         onPressed: lib.toggleSortMode,
       );
 
+  List<Widget> _libraryActions(LibraryProvider lib) => [
+        IconButton(
+          icon: const Icon(Icons.folder_open),
+          tooltip: 'Choose library folder',
+          onPressed: lib.loading ? null : _pickFolder,
+        ),
+        if (lib.loading)
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          )
+        else
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh library',
+            onPressed: () => context.read<LibraryProvider>().refresh(),
+          ),
+      ];
+
+  // Tapping anywhere outside an interactive control (release cards and the
+  // search field itself both handle their own taps first, so this only
+  // fires on genuinely "away" taps) dismisses the keyboard by moving focus
+  // off the search field.
+  Widget _dismissKeyboardOnTap(Widget child) => GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.opaque,
+        child: child,
+      );
+
   @override
   Widget build(BuildContext context) {
     return Consumer<LibraryProvider>(
       builder: (context, lib, _) {
+        if (widget.wide) return _buildWide(lib);
         return Scaffold(
           appBar: AppBar(
             title: const Text('Surface Noise'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.folder_open),
-                tooltip: 'Choose library folder',
-                onPressed: lib.loading ? null : _pickFolder,
-              ),
-              if (lib.loading)
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              else
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh library',
-                  onPressed: () => context.read<LibraryProvider>().refresh(),
-                ),
-            ],
+            actions: _libraryActions(lib),
           ),
-          body: GestureDetector(
-            // Tapping anywhere outside an interactive control (release cards
-            // and the search field itself both handle their own taps first,
-            // so this only fires on genuinely "away" taps) dismisses the
-            // keyboard by moving focus off the search field.
-            onTap: () => FocusScope.of(context).unfocus(),
-            behavior: HitTestBehavior.opaque,
-            child: _buildBody(context, lib),
-          ),
+          body: _dismissKeyboardOnTap(_buildBody(context, lib)),
         );
       },
     );
@@ -173,7 +178,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
     }
 
-    if (widget.wide) return _buildWideBody(lib, releases);
+    if (widget.wide) {
+      return releases.isEmpty
+          ? const Center(
+              child: Text(
+                'No releases match the current filters',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          : _buildGrid(releases);
+    }
 
     return Column(
       children: [
@@ -222,69 +236,70 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (widget.wideDetail != null) widget.onHome?.call();
   }
 
-  Widget _buildWideBody(LibraryProvider lib, List<Release> releases) {
-    final detail = widget.wideDetail;
+  // Two panels, like Apple Music: the sidebar running the full height of
+  // the window, and a main panel with its own navigation bar — the
+  // Library one over the grid, or the open release's in its place.
+  Widget _buildWide(LibraryProvider lib) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          width: kLibrarySidebarWidth,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 4, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: LibrarySearchField(
-                        focusNode: widget.searchFocusNode,
-                        onChanged: (_) => _onFiltersChanged(),
-                      ),
-                    ),
-                    _sortToggle(lib),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: ListTile(
-                  dense: true,
-                  selected: detail == null,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  selectedTileColor:
-                      Theme.of(context).colorScheme.secondaryContainer,
-                  leading: const Icon(Icons.home_outlined, size: 20),
-                  minLeadingWidth: 20,
-                  title: const Text('Home'),
-                  onTap: widget.onHome,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child:
-                    Text('Tags', style: Theme.of(context).textTheme.titleSmall),
-              ),
-              Expanded(
-                  child:
-                      TagSidebarList(onTagToggled: (_) => _onFiltersChanged())),
-            ],
-          ),
-        ),
+        SizedBox(width: kLibrarySidebarWidth, child: _buildSidebar()),
         const VerticalDivider(width: 1),
         Expanded(
-          child: detail ??
-              (releases.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No releases match the current filters',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : _buildGrid(releases)),
+          child: widget.wideDetail ??
+              Scaffold(
+                appBar: AppBar(
+                  title: const Text('Library'),
+                  actions: [
+                    SizedBox(
+                      width: 220,
+                      child: LibrarySearchField(
+                          focusNode: widget.searchFocusNode, compact: true),
+                    ),
+                    const SizedBox(width: 8),
+                    _sortToggle(lib),
+                    ..._libraryActions(lib),
+                  ],
+                ),
+                body: _dismissKeyboardOnTap(_buildBody(context, lib)),
+              ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSidebar() {
+    final scheme = Theme.of(context).colorScheme;
+    // A Material (not a ColoredBox) so the Home and tag rows' highlights and
+    // ink splashes paint on it rather than being hidden underneath.
+    return Material(
+      color: scheme.surfaceContainerLow,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+            child: ListTile(
+              dense: true,
+              selected: widget.wideDetail == null,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              selectedTileColor: scheme.secondaryContainer,
+              leading: const Icon(Icons.home_outlined, size: 20),
+              minLeadingWidth: 20,
+              title: const Text('Home'),
+              onTap: widget.onHome,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text('Tags', style: Theme.of(context).textTheme.titleSmall),
+          ),
+          Expanded(
+            child: TagSidebarList(onTagToggled: (_) => _onFiltersChanged()),
+          ),
+        ],
+      ),
     );
   }
 

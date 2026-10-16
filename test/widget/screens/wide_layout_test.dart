@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/screens/app_shell.dart';
+import 'package:surface_noise_player/screens/library_screen.dart';
 import 'package:surface_noise_player/screens/release_screen.dart';
 import 'package:surface_noise_player/services/library_provider.dart';
 import 'package:surface_noise_player/widgets/mini_player.dart';
@@ -123,6 +124,64 @@ void main() {
     });
   });
 
+  group('window structure', () {
+    Finder sidebar() => find
+        .ancestor(
+            of: find.byType(TagSidebarList), matching: find.byType(Material))
+        .first;
+    Finder navBarWith(String title) =>
+        find.ancestor(of: find.text(title), matching: find.byType(AppBar));
+
+    testWidgets('the sidebar runs the full height of the window',
+        (tester) async {
+      await pumpShell(tester);
+
+      final rect = tester.getRect(sidebar());
+      expect(rect.top, 0);
+      expect(rect.bottom, wideSize.height);
+    });
+
+    testWidgets(
+        'the Library nav bar sits over the main panel with search, sort, folder and refresh',
+        (tester) async {
+      await pumpShell(tester);
+
+      final bar = navBarWith('Library');
+      expect(bar, findsOneWidget);
+      expect(tester.getRect(bar).left,
+          greaterThanOrEqualTo(tester.getRect(sidebar()).right));
+      expect(find.descendant(of: bar, matching: find.byType(TextField)),
+          findsOneWidget);
+      expect(find.descendant(of: sidebar(), matching: find.byType(TextField)),
+          findsNothing);
+      final search = find.descendant(of: bar, matching: find.byType(TextField));
+      expect(tester.getSize(search).height, lessThanOrEqualTo(36));
+      expect(tester.widget<TextField>(search).style?.fontSize, 13);
+      for (final tooltip in [
+        'Sorted by recent activity — tap to sort alphabetically',
+        'Choose library folder',
+        'Refresh library',
+      ]) {
+        expect(find.descendant(of: bar, matching: find.byTooltip(tooltip)),
+            findsOneWidget);
+      }
+    });
+
+    testWidgets('opening a release replaces the Library nav bar with its own',
+        (tester) async {
+      await pumpShell(tester);
+
+      await tester.tap(inGrid('Album A'));
+      await tester.pumpAndSettle();
+
+      expect(navBarWith('Library'), findsNothing);
+      expect(find.byTooltip('Refresh library'), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byTooltip('Back to library'), findsOneWidget);
+      expect(find.byTooltip('Rescan metadata'), findsOneWidget);
+    });
+  });
+
   group('grid', () {
     for (final scale in [1.0, 2.0]) {
       testWidgets(
@@ -209,6 +268,63 @@ void main() {
       expect(tester.widget<ListTile>(homeTile()).selected, isFalse);
     });
 
+    testWidgets(
+        'shows the artwork in the left half and title, artist, tags and tracks in the right half',
+        (tester) async {
+      await pumpShell(tester, releases: [
+        const Release(
+          folderPath: '/music/Tagged',
+          name: 'Some Artist - Some Album',
+          albumArtist: 'Some Artist',
+          albumTitle: 'Some Album',
+          tracks: [
+            Track(path: '/music/Tagged/01.mp3', title: 'First', trackNumber: 1),
+          ],
+          tags: ['jazz'],
+        ),
+      ]);
+      await openRelease(tester, 'Some Artist - Some Album');
+
+      final view = find.byType(ReleaseScreen);
+      const mainLeft = kLibrarySidebarWidth + 1;
+      const middle = (mainLeft + 1280) / 2;
+      final art = tester.getRect(
+          find.descendant(of: view, matching: find.byType(AspectRatio)));
+      expect(art.width, art.height);
+      expect(art.left, greaterThan(mainLeft));
+      expect(art.right, lessThanOrEqualTo(middle));
+
+      for (final text in ['Some Album', 'Some Artist', 'jazz', 'First']) {
+        expect(
+            tester
+                .getRect(find.descendant(of: view, matching: find.text(text)))
+                .left,
+            greaterThanOrEqualTo(middle),
+            reason: text);
+      }
+      expect(
+          tester
+              .getRect(find.descendant(of: view, matching: find.text('jazz')))
+              .top,
+          lessThan(tester
+              .getRect(find.descendant(of: view, matching: find.text('First')))
+              .top));
+    });
+
+    testWidgets('the artwork and track list scroll together as one view',
+        (tester) async {
+      await pumpShell(tester);
+      await openRelease(tester, 'Album A');
+
+      final list = find.descendant(
+          of: find.byType(ReleaseScreen), matching: find.byType(ListView));
+      expect(list, findsOneWidget);
+      expect(find.descendant(of: list, matching: find.byType(AspectRatio)),
+          findsOneWidget);
+      expect(find.descendant(of: list, matching: find.text('Album A One')),
+          findsOneWidget);
+    });
+
     testWidgets('Home is highlighted while the grid is showing',
         (tester) async {
       await pumpShell(tester);
@@ -269,19 +385,6 @@ void main() {
       expect(find.byType(ReleaseScreen), findsNothing);
       expect(find.byType(ReleaseGridTile), findsOneWidget);
       expect(inGrid('Album A'), findsOneWidget);
-    });
-
-    testWidgets('typing in search returns to the filtered grid',
-        (tester) async {
-      await pumpShell(tester);
-      await openRelease(tester, 'Album A');
-
-      await tester.enterText(find.byType(TextField), 'Album B');
-      await tester.pumpAndSettle();
-
-      expect(find.byType(ReleaseScreen), findsNothing);
-      expect(find.byType(ReleaseGridTile), findsOneWidget);
-      expect(inGrid('Album B'), findsOneWidget);
     });
 
     testWidgets('returning to the grid keeps its scroll position',
@@ -608,6 +711,24 @@ void main() {
       await pressWithMeta(tester, LogicalKeyboardKey.arrowLeft);
       expect(h.player.seekToNextCallCount, 1);
       expect(h.player.seekToPreviousCallCount, 1);
+    });
+
+    testWidgets(
+        '⌘F with a release showing returns to the Library view and focuses search',
+        (tester) async {
+      await pumpShell(tester);
+      await tester.tap(inGrid('Album A'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+
+      await pressWithMeta(tester, LogicalKeyboardKey.keyF);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReleaseScreen), findsNothing);
+      expect(find.byType(ReleaseGridTile), findsNWidgets(2));
+      expect(
+          tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+          isTrue);
     });
 
     for (final (label, size) in [('wide', wideSize), ('narrow', narrowSize)]) {
