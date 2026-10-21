@@ -135,6 +135,9 @@ writing a feature; remove or update it when behaviour changes.
 - macOS's Now Playing widget in Control Center and the keyboard media keys show the current track (title, artist, album, artwork, duration, elapsed time) and control playback, the same as the iOS lock screen and Control Center (see Playback)
 - The macOS app keeps its own local database: tags, play history, and activity timestamps are not shared with the iOS app, even when both point at the same iCloud Drive library folder
 - The macOS window opens at a desktop size (1280×800) the first time, and remembers its size and position after that; it can be shrunk down to phone width
+- Development builds of the macOS app (debug and profile) are a separate app, "Dev Surface Noise", from release builds ("Surface Noise"), the same split as on iOS; the two can be installed and run side by side, each with its own library folder, database, and window position
+- A release build can be installed into /Applications for everyday use with `scripts/install_macos_release.sh`, which builds from a clean working tree, replaces any previously installed copy, and tags the built commit locally as `macos/<version>-<build>`
+- macOS builds are signed with the development team's Apple Development certificate rather than ad hoc, so updating the installed app keeps its remembered library folder
 
 ## Wide layout
 
