@@ -85,13 +85,6 @@ class BookmarkPlugin: NSObject, FlutterPlugin {
                 return
             }
             evictFile(path: path, result: result)
-        case "evictRelease":
-            guard let args = call.arguments as? [String: Any],
-                  let path = args["path"] as? String else {
-                result(FlutterError(code: "INVALID_ARGS", message: "path required", details: nil))
-                return
-            }
-            evictRelease(path: path, result: result)
         case "isFileAvailable":
             guard let args = call.arguments as? [String: Any],
                   let path = args["path"] as? String else {
@@ -363,22 +356,7 @@ class BookmarkPlugin: NSObject, FlutterPlugin {
         }
     }
 
-    private func evictRelease(path: String, result: @escaping FlutterResult) {
-        DispatchQueue.global(qos: .utility).async {
-            let fm = FileManager.default
-            guard let contents = try? fm.contentsOfDirectory(atPath: path) else {
-                DispatchQueue.main.async { result(nil) }
-                return
-            }
-            for filename in contents {
-                let url = URL(fileURLWithPath: path).appendingPathComponent(filename)
-                try? fm.evictUbiquitousItem(at: url)
-            }
-            DispatchQueue.main.async { result(nil) }
-        }
-    }
-
-    // Evicts a single file (not a whole folder) from local iCloud storage. Best-effort.
+    // Evicts a single file from local iCloud storage. Best-effort.
     private func evictFile(path: String, result: @escaping FlutterResult) {
         DispatchQueue.global(qos: .utility).async {
             try? FileManager.default.evictUbiquitousItem(at: URL(fileURLWithPath: path))

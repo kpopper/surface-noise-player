@@ -23,9 +23,6 @@ abstract class BookmarkService {
   // — poll isFileAvailable for that.
   Future<bool> downloadFile(String path);
 
-  // Evicts all files in a folder from local iCloud storage. Best-effort.
-  Future<void> evictRelease(String folderPath);
-
   // Evicts a single file from local iCloud storage. Best-effort.
   Future<void> evictFile(String path);
 
@@ -88,15 +85,6 @@ class _BookmarkServiceImpl implements BookmarkService {
       return result ?? false;
     } on PlatformException {
       return false;
-    }
-  }
-
-  @override
-  Future<void> evictRelease(String folderPath) async {
-    try {
-      await _channel.invokeMethod('evictRelease', {'path': folderPath});
-    } on PlatformException {
-      // best-effort
     }
   }
 
