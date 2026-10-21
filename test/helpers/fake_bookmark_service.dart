@@ -13,7 +13,6 @@ class FakeBookmarkService implements BookmarkService {
   bool downloadResult = true;
   bool downloadFileResult = true;
   String? lastDownloadPath;
-  String? lastEvictPath;
   String? lastDownloadFilePath;
   String? lastEvictFilePath;
   final List<String> downloadFileCalls = [];
@@ -49,11 +48,6 @@ class FakeBookmarkService implements BookmarkService {
     lastDownloadPath = folderPath;
     downloadReleaseCalls.add(folderPath);
     return downloadResult;
-  }
-
-  @override
-  Future<void> evictRelease(String folderPath) async {
-    lastEvictPath = folderPath;
   }
 
   @override
