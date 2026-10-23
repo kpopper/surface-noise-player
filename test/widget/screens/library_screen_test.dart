@@ -7,14 +7,17 @@ import 'package:surface_noise_player/models/release.dart';
 import 'package:surface_noise_player/screens/library_screen.dart';
 import 'package:surface_noise_player/screens/release_screen.dart';
 import 'package:surface_noise_player/services/library_provider.dart';
+import 'package:surface_noise_player/widgets/tag_filter_bar.dart';
 import '../../helpers/fake_bookmark_service.dart';
 import '../../helpers/fake_library_service.dart';
 
-Release makeRelease(String name, {DateTime? lastActivityAt}) => Release(
+Release makeRelease(String name,
+        {DateTime? lastActivityAt, List<String> tags = const []}) =>
+    Release(
       folderPath: '/music/$name',
       name: name,
       tracks: const [],
-      tags: const [],
+      tags: tags,
       lastActivityAt: lastActivityAt,
     );
 
@@ -42,8 +45,7 @@ Future<LibraryProvider> pumpLibraryScreen(
 
 void main() {
   group('initial load', () {
-    testWidgets(
-        'screen is blank while the initial database load is in flight',
+    testWidgets('screen is blank while the initial database load is in flight',
         (tester) async {
       final fakeBookmark = FakeBookmarkService()
         ..resolveBookmarkGate = Completer<void>();
@@ -212,6 +214,44 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('No releases match'), findsOneWidget);
+    });
+
+    testWidgets('shows "No releases match" when untagged filter has no results',
+        (tester) async {
+      final provider =
+          await pumpLibraryScreen(tester, savedRoot: '/music', releases: [
+        makeRelease('Album A', tags: ['jazz'])
+      ], tags: [
+        'jazz'
+      ]);
+
+      provider.toggleUntagged(); // Album A has tags → filtered out
+      await tester.pump();
+
+      expect(find.textContaining('No releases match'), findsOneWidget);
+      expect(find.byType(TagFilterBar), findsOneWidget);
+    });
+
+    testWidgets(
+        'the untagged chip can be turned off again when it matches nothing',
+        (tester) async {
+      final provider =
+          await pumpLibraryScreen(tester, savedRoot: '/music', releases: [
+        makeRelease('Album A', tags: ['jazz'])
+      ], tags: [
+        'jazz'
+      ]);
+      final untaggedChip = find.descendant(
+          of: find.byType(TagFilterBar), matching: find.text('untagged'));
+
+      await tester.tap(untaggedChip);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('No releases match'), findsOneWidget);
+
+      await tester.tap(untaggedChip);
+      await tester.pumpAndSettle();
+      expect(provider.untaggedActive, isFalse);
+      expect(find.text('Album A'), findsOneWidget);
     });
   });
 

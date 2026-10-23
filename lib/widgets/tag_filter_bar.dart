@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../services/library_provider.dart';
 import 'tag_chip.dart';
 
+const _untaggedLabel = 'untagged';
+
 class TagFilterBar extends StatelessWidget {
   const TagFilterBar({super.key});
 
@@ -22,6 +24,15 @@ class TagFilterBar extends StatelessWidget {
               ...tags.where((t) => !active.contains(t)),
             ];
 
+            Widget chip(String label, bool selected, VoidCallback onTap) =>
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child:
+                      TagChip(label: label, selected: selected, onTap: onTap),
+                );
+            final untagged =
+                chip(_untaggedLabel, lib.untaggedActive, lib.toggleUntagged);
+
             return SizedBox(
               height: 48,
               child: ListView(
@@ -29,14 +40,12 @@ class TagFilterBar extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 children: [
-                  ...sorted.map((t) => Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: TagChip(
-                          label: t,
-                          selected: active.contains(t),
-                          onTap: () => lib.toggleTag(t),
-                        ),
-                      )),
+                  // Like the active tags, an active "untagged" filter moves
+                  // to the front; otherwise it sits at the end.
+                  if (lib.untaggedActive) untagged,
+                  for (final t in sorted)
+                    chip(t, active.contains(t), () => lib.toggleTag(t)),
+                  if (!lib.untaggedActive) untagged,
                 ],
               ),
             );

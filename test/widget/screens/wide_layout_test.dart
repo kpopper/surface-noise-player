@@ -211,6 +211,23 @@ void main() {
       expect(find.text('No tags yet'), findsOneWidget);
     });
 
+    testWidgets('displays an untagged chip', (tester) async {
+      await pumpShell(
+        tester,
+        releases: [
+          makeRelease('Album A', tags: ['jazz']),
+          makeRelease('Album B'),
+        ],
+        tags: ['jazz'],
+      );
+
+      Finder inSidebar(String text) => find.descendant(
+          of: find.byType(TagSidebarList), matching: find.text(text));
+
+      expect(inSidebar('jazz'), findsOneWidget);
+      expect(inSidebar('untagged'), findsOneWidget);
+    });
+
     testWidgets('clicking a tag filters the grid, and clicking again clears it',
         (tester) async {
       final h = await pumpShell(
@@ -242,6 +259,40 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(h.provider.activeTags, isEmpty);
+      expect(find.byType(ReleaseGridTile), findsNWidgets(2));
+    });
+
+    testWidgets(
+        'clicking untagged tag filters the grid, and clicking again clears it',
+        (tester) async {
+      await pumpShell(
+        tester,
+        releases: [
+          makeRelease('Album A', tags: ['jazz']),
+          makeRelease('Album B'),
+        ],
+        tags: ['jazz'],
+      );
+      final sidebarTag = find.descendant(
+          of: find.byType(TagSidebarList), matching: find.text('untagged'));
+
+      await tester.tap(sidebarTag);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReleaseGridTile), findsOneWidget);
+      expect(inGrid('Album B'), findsOneWidget);
+      expect(
+        tester
+            .widget<ListTile>(
+                find.ancestor(of: sidebarTag, matching: find.byType(ListTile)))
+            .selected,
+        isTrue,
+      );
+      expect(inGrid('jazz'), findsNothing);
+
+      await tester.tap(sidebarTag);
+      await tester.pumpAndSettle();
+
       expect(find.byType(ReleaseGridTile), findsNWidgets(2));
     });
   });
