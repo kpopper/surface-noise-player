@@ -155,8 +155,7 @@ void main() {
       await sub.cancel();
     });
 
-    test(
-        'does not cascade into trying the next track in the release',
+    test('does not cascade into trying the next track in the release',
         () async {
       final release = releaseOf([
         const Track(path: '/release/01.mp3', title: 'One', trackNumber: 1),
@@ -195,7 +194,8 @@ void main() {
       expect(messages, hasLength(1));
       expect(service.currentRelease, isNull);
       expect(fakeBookmarks.downloadFileCalls, contains('/release/02.mp3'));
-      expect(fakeBookmarks.downloadFileCalls, isNot(contains('/release/03.mp3')));
+      expect(
+          fakeBookmarks.downloadFileCalls, isNot(contains('/release/03.mp3')));
 
       await sub.cancel();
     });

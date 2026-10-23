@@ -197,10 +197,8 @@ void main() {
 
     expect(find.byType(NowPlayingScreen), findsOneWidget);
 
-    await tester.fling(
-        find.byKey(const Key('now-playing-dismiss-area')),
-        const Offset(0, 300),
-        1000);
+    await tester.fling(find.byKey(const Key('now-playing-dismiss-area')),
+        const Offset(0, 300), 1000);
     await tester.pumpAndSettle();
 
     expect(find.byType(NowPlayingScreen), findsNothing);
@@ -221,10 +219,8 @@ void main() {
     fake.emitSequenceState(const MediaItem(id: '1', title: 'Track One'));
     await tester.pump();
 
-    await tester.fling(
-        find.byKey(const Key('now-playing-dismiss-area')),
-        const Offset(0, -300),
-        1000);
+    await tester.fling(find.byKey(const Key('now-playing-dismiss-area')),
+        const Offset(0, -300), 1000);
     await tester.pumpAndSettle();
 
     expect(find.byType(NowPlayingScreen), findsOneWidget);

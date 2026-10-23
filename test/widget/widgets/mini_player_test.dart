@@ -154,8 +154,7 @@ void main() {
     fake.emitSequenceState(const MediaItem(id: '1', title: 'Track One'));
     await tester.pump();
 
-    await tester.fling(
-        find.byType(MiniPlayer), const Offset(0, -300), 1000);
+    await tester.fling(find.byType(MiniPlayer), const Offset(0, -300), 1000);
     await tester.pumpAndSettle();
 
     expect(tapped, isTrue);

@@ -231,7 +231,8 @@ class LibraryService {
     // its first track evicted by a scan/rescan purely incidental to reading
     // its tags, leaving the rest of the release downloaded but not the
     // first track.
-    final wasAlreadyAvailable = await _bookmarks.isFileAvailable(firstTrackPath);
+    final wasAlreadyAvailable =
+        await _bookmarks.isFileAvailable(firstTrackPath);
     if (!wasAlreadyAvailable) await _bookmarks.downloadFile(firstTrackPath);
     if (!await _awaitFileAvailable(firstTrackPath)) {
       // Still worth keeping any folder-image art found without a download,
@@ -395,7 +396,8 @@ class LibraryService {
   }) async {
     var artPath = knownArtPath ?? await _findArtFile(folderPath);
     if (artPath == null && downloadedFirstTrackPath != null) {
-      final extracted = await _metadata.extractArtwork(downloadedFirstTrackPath);
+      final extracted =
+          await _metadata.extractArtwork(downloadedFirstTrackPath);
       if (extracted != null) {
         artPath = await _persistExtractedArtwork(folderPath, extracted);
       }
@@ -441,12 +443,13 @@ class LibraryService {
   // leaving the rest of the release downloaded but not the first track.
   // path is null — without downloading anything further — if the release
   // has no tracks yet, or the download doesn't become available in time.
-  Future<({String? path, bool wasAlreadyAvailable})> _downloadFirstTrackForRetry(
-      String folderPath) async {
+  Future<({String? path, bool wasAlreadyAvailable})>
+      _downloadFirstTrackForRetry(String folderPath) async {
     final tracks = await _db.loadTracks(folderPath);
     if (tracks.isEmpty) return (path: null, wasAlreadyAvailable: false);
     final firstTrackPath = tracks.first['file_path'] as String;
-    final wasAlreadyAvailable = await _bookmarks.isFileAvailable(firstTrackPath);
+    final wasAlreadyAvailable =
+        await _bookmarks.isFileAvailable(firstTrackPath);
     if (!wasAlreadyAvailable) await _bookmarks.downloadFile(firstTrackPath);
     if (!await _awaitFileAvailable(firstTrackPath)) {
       return (path: null, wasAlreadyAvailable: wasAlreadyAvailable);
