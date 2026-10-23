@@ -19,6 +19,8 @@ class TagSidebarList extends StatelessWidget {
           future: lib.allTags(),
           builder: (context, snap) {
             if (!snap.hasData) return const SizedBox.shrink();
+            const untaggedTag = 'untagged';
+            final untaggedActive = lib.untaggedActive;
             final tags = snap.data!;
             if (tags.isEmpty) {
               return const Padding(
@@ -42,6 +44,13 @@ class TagSidebarList extends StatelessWidget {
                       onTagToggled?.call(tag);
                     },
                   ),
+                _TagRow(
+                    tag: untaggedTag,
+                    selected: untaggedActive,
+                    onTap: () {
+                      lib.toggleUntagged();
+                      onTagToggled?.call(untaggedTag);
+                    }),
               ],
             );
           },

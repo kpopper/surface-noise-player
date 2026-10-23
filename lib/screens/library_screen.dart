@@ -155,7 +155,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
     // in the background (the app bar spinner is the sync indicator) — only
     // fall back to a full-screen spinner when there's genuinely nothing to
     // show yet, e.g. the very first sync after picking a new folder.
-    if (releases.isEmpty && lib.activeTags.isEmpty && lib.searchQuery.isEmpty) {
+    if (releases.isEmpty &&
+        lib.activeTags.isEmpty &&
+        !lib.untaggedActive &&
+        lib.searchQuery.isEmpty) {
       if (lib.loading) {
         return const Center(child: CircularProgressIndicator());
       }

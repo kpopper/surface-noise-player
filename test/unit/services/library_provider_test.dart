@@ -216,6 +216,13 @@ void main() {
       expect(provider.activeTags, isEmpty);
     });
 
+    test('clears untagged filter', () async {
+      provider.toggleUntagged();
+      fakeService.rootToReturn = '/new-music';
+      await provider.pickFolder();
+      expect(provider.untaggedActive, false);
+    });
+
     test('clears the search query', () async {
       provider.setSearchQuery('jazz');
       fakeService.rootToReturn = '/new-music';
@@ -263,6 +270,18 @@ void main() {
       provider.toggleTag('jazz');
       provider.toggleTag('rock');
       expect(provider.releases, isEmpty);
+    });
+
+    test('filters untagged release', () {
+      provider.toggleUntagged();
+      expect(provider.releases.length, 1);
+      expect(provider.releases.first.name, 'Untagged Album');
+    });
+
+    test('no releases show when untagged is combined with other tags', () {
+      provider.toggleUntagged();
+      provider.toggleTag('jazz');
+      expect(provider.releases.length, 0);
     });
   });
 

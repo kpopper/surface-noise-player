@@ -16,6 +16,7 @@ class LibraryProvider extends ChangeNotifier {
 
   List<Release> _releases = [];
   final List<String> _activeTags = [];
+  bool _untaggedActive = false;
   String _searchQuery = '';
   LibrarySortMode _sortMode = LibrarySortMode.recency;
   bool loading = false;
@@ -24,6 +25,9 @@ class LibraryProvider extends ChangeNotifier {
 
   List<Release> get releases {
     var result = _releases;
+    if (_untaggedActive) {
+      result = result.where((r) => r.tags.isEmpty).toList();
+    }
     if (_activeTags.isNotEmpty) {
       result = result
           .where((r) => _activeTags.every((t) => r.tags.contains(t)))
@@ -40,6 +44,7 @@ class LibraryProvider extends ChangeNotifier {
   List<String> get activeTags => List.unmodifiable(_activeTags);
   String get searchQuery => _searchQuery;
   LibrarySortMode get sortMode => _sortMode;
+  bool get untaggedActive => _untaggedActive;
 
   // Runs once per provider: later calls (e.g. LibraryScreen being rebuilt
   // when the window is resized across the wide-layout breakpoint) share the
@@ -77,6 +82,7 @@ class LibraryProvider extends ChangeNotifier {
       // visible here — unlike init()/refresh() below.
       _releases = [];
       _activeTags.clear();
+      _untaggedActive = false;
       _searchQuery = '';
       await _syncInBackground(rootPath!);
     }
@@ -188,6 +194,11 @@ class LibraryProvider extends ChangeNotifier {
     } else {
       _activeTags.add(tag);
     }
+    notifyListeners();
+  }
+
+  void toggleUntagged() {
+    _untaggedActive = !_untaggedActive;
     notifyListeners();
   }
 
