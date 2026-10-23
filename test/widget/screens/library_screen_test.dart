@@ -43,6 +43,12 @@ Future<LibraryProvider> pumpLibraryScreen(
   return provider;
 }
 
+// The phone layout's search starts collapsed to an icon.
+Future<void> openSearch(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Search'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('initial load', () {
     testWidgets('screen is blank while the initial database load is in flight',
@@ -266,6 +272,7 @@ void main() {
       expect(find.text('Aardvark'), findsOneWidget);
       expect(find.text('Bumblebee'), findsOneWidget);
 
+      await openSearch(tester);
       await tester.enterText(find.byType(TextField), 'bumble');
       await tester.pump();
 
@@ -280,6 +287,7 @@ void main() {
         makeRelease('Bumblebee'),
       ]);
 
+      await openSearch(tester);
       await tester.enterText(find.byType(TextField), 'bumble');
       await tester.pump();
       expect(find.text('Aardvark'), findsNothing);
@@ -296,10 +304,99 @@ void main() {
       await pumpLibraryScreen(tester,
           savedRoot: '/music', releases: [makeRelease('Aardvark')]);
 
+      await openSearch(tester);
       await tester.enterText(find.byType(TextField), 'zzz');
       await tester.pump();
 
       expect(find.textContaining('No releases match'), findsOneWidget);
+    });
+  });
+
+  group('collapsible search', () {
+    Future<void> tapAway(WidgetTester tester) async {
+      final listBottomLeft = tester.getBottomLeft(find.byType(ListView));
+      await tester.tapAt(listBottomLeft + const Offset(50, -20));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('starts collapsed to a search icon', (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: [makeRelease('Album A')]);
+
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byTooltip('Search'), findsOneWidget);
+    });
+
+    testWidgets('tapping the icon expands a focused search field',
+        (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: [makeRelease('Album A')]);
+
+      await openSearch(tester);
+
+      expect(find.byType(TextField), findsOneWidget);
+      // Faded out but still mounted, so check it can't be tapped.
+      expect(find.byTooltip('Search').hitTestable(), findsNothing);
+      expect(tester.testTextInput.isVisible, isTrue);
+    });
+
+    testWidgets('collapses again when tapped away from while empty',
+        (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: [makeRelease('Album A')]);
+
+      await openSearch(tester);
+      await tapAway(tester);
+
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byTooltip('Search'), findsOneWidget);
+    });
+
+    testWidgets('stays expanded when tapped away from with a search entered',
+        (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: [makeRelease('Album A')]);
+
+      await openSearch(tester);
+      await tester.enterText(find.byType(TextField), 'album');
+      await tapAway(tester);
+
+      expect(find.byType(TextField), findsOneWidget);
+    });
+
+    testWidgets('collapses when cleared after losing focus', (tester) async {
+      await pumpLibraryScreen(tester,
+          savedRoot: '/music', releases: [makeRelease('Album A')]);
+
+      await openSearch(tester);
+      await tester.enterText(find.byType(TextField), 'album');
+      await tapAway(tester);
+      await tester.tap(find.byIcon(Icons.clear));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byTooltip('Search'), findsOneWidget);
+    });
+
+    testWidgets('focusing the search node while collapsed expands the field',
+        (tester) async {
+      final focusNode = FocusNode();
+      addTearDown(focusNode.dispose);
+      final fake = FakeLibraryService()
+        ..rootToReturn = '/music'
+        ..releasesToReturn = [makeRelease('Album A')];
+      await tester.pumpWidget(ChangeNotifierProvider<LibraryProvider>.value(
+        value: LibraryProvider(fake, FakeBookmarkService()),
+        child: MaterialApp(home: LibraryScreen(searchFocusNode: focusNode)),
+      ));
+      await tester.pumpAndSettle();
+
+      focusNode.requestFocus();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsOneWidget);
+      expect(focusNode.hasFocus, isTrue);
+      expect(tester.testTextInput.isVisible, isTrue);
     });
   });
 
@@ -309,6 +406,7 @@ void main() {
       await pumpLibraryScreen(tester,
           savedRoot: '/music', releases: [makeRelease('Album A')]);
 
+      await openSearch(tester);
       await tester.tap(find.byType(TextField));
       await tester.pump();
       expect(tester.testTextInput.isVisible, isTrue);
@@ -328,6 +426,7 @@ void main() {
           savedRoot: '/music',
           releases: [for (var i = 0; i < 20; i++) makeRelease('Album $i')]);
 
+      await openSearch(tester);
       await tester.tap(find.byType(TextField));
       await tester.pump();
       expect(tester.testTextInput.isVisible, isTrue);

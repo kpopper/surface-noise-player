@@ -783,17 +783,26 @@ void main() {
           isTrue);
     });
 
-    for (final (label, size) in [('wide', wideSize), ('narrow', narrowSize)]) {
-      testWidgets('⌘F focuses the search field ($label layout)',
-          (tester) async {
-        await pumpShell(tester, size: size);
-        final field = tester.widget<TextField>(find.byType(TextField));
-        expect(field.focusNode!.hasFocus, isFalse);
+    testWidgets('⌘F focuses the search field (wide layout)', (tester) async {
+      await pumpShell(tester, size: wideSize);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.focusNode!.hasFocus, isFalse);
 
-        await pressWithMeta(tester, LogicalKeyboardKey.keyF);
+      await pressWithMeta(tester, LogicalKeyboardKey.keyF);
 
-        expect(field.focusNode!.hasFocus, isTrue);
-      });
-    }
+      expect(field.focusNode!.hasFocus, isTrue);
+    });
+
+    testWidgets('⌘F expands and focuses the search field (narrow layout)',
+        (tester) async {
+      await pumpShell(tester, size: narrowSize);
+      expect(find.byType(TextField), findsNothing);
+
+      await pressWithMeta(tester, LogicalKeyboardKey.keyF);
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.focusNode!.hasFocus, isTrue);
+    });
   });
 }
