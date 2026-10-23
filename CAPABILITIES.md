@@ -204,6 +204,9 @@ writing a feature; remove or update it when behaviour changes.
 - When a root folder is selected but the library is empty (no valid subfolders found), an empty-state message is shown with a button to choose a different library folder
 - When releases exist, one card is shown per release
 - A search field at the bottom of the screen filters the release list by matching the release name (which includes album artist and title when known) as you type, case-insensitively
+- While the search is empty and not focused, it collapses to a search icon; it and the sort toggle then float together over the bottom right of the release list, so releases stay visible to their left, and the list can scroll its last release clear of them
+- Tapping the search icon expands it to the full-width search field (with the sort toggle beside it) below the list, with the keyboard up (⌘F does the same)
+- The expanded field collapses again once it is both empty and no longer focused — e.g. after clearing it and tapping away, or tapping away with nothing typed; while it holds a search it stays expanded, focused or not
 - The search field and tag filters combine with AND logic, same as multiple active tags
 - Scrolling the release list, or tapping anywhere else on the screen, dismisses the keyboard by moving focus away from the search field
 - When the active tag filter and/or search have no matching releases, a "no releases match" message is shown

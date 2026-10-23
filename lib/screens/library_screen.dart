@@ -40,12 +40,44 @@ class LibraryScreen extends StatefulWidget {
 
 const double kLibrarySidebarWidth = 260;
 
+const double _kFloatingButtonSize = 56;
+const double _kFloatingControlsPadding = 4;
+const double _kFloatingControlsMargin = 12;
+const Duration _kFloatingControlsAnimation = Duration(milliseconds: 150);
+// The pill's height plus the margin either side of it.
+const double _kFloatingControlsClearance = _kFloatingButtonSize +
+    2 * _kFloatingControlsPadding +
+    2 * _kFloatingControlsMargin;
+
 class _LibraryScreenState extends State<LibraryScreen> {
+  FocusNode? _ownSearchFocus;
+  FocusNode get _searchFocus =>
+      widget.searchFocusNode ?? (_ownSearchFocus ??= FocusNode());
+
+  // Phone layout only: the search collapses to an icon while it's empty and
+  // unfocused, so it's expanded while this is set or a search is active.
+  bool _searchOpen = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<LibraryProvider>().init();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ownSearchFocus?.dispose();
+    super.dispose();
+  }
+
+  // The field replaces the icon on the next frame, so it's focused once
+  // it's built.
+  void _openSearch() {
+    setState(() => _searchOpen = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _searchFocus.requestFocus();
     });
   }
 
@@ -63,7 +95,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  Widget _sortToggle(LibraryProvider lib) => IconButton(
+  Widget _sortToggle(LibraryProvider lib, {ButtonStyle? style}) => IconButton(
+        style: style,
         icon: Icon(lib.sortMode == LibrarySortMode.recency
             ? Icons.unfold_more
             : Icons.sort_by_alpha),
@@ -192,46 +225,136 @@ class _LibraryScreenState extends State<LibraryScreen> {
           : _buildGrid(releases);
     }
 
+    final searchExpanded = _searchOpen || lib.searchQuery.isNotEmpty;
     return Column(
       children: [
         const TagFilterBar(),
-        if (releases.isEmpty)
-          const Expanded(
-            child: Center(
-              child: Text(
-                'No releases match the current filters',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-          )
-        else
-          Expanded(
-            child: ListView.builder(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              itemCount: releases.length,
-              itemBuilder: (context, i) {
-                final release = releases[i];
-                return ReleaseCard(
-                  release: release,
-                  onTap: () => _openRelease(release),
-                );
-              },
-            ),
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-          child: Row(
+        Expanded(
+          child: Stack(
             children: [
-              Expanded(
-                  child: LibrarySearchField(focusNode: widget.searchFocusNode)),
-              const SizedBox(width: 8),
-              _sortToggle(lib),
+              if (releases.isEmpty)
+                const Center(
+                  child: Text(
+                    'No releases match the current filters',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              else
+                ListView.builder(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  // Lets the last release scroll clear of the floating
+                  // search and sort buttons.
+                  padding: EdgeInsets.only(
+                      bottom: searchExpanded ? 0 : _kFloatingControlsClearance),
+                  itemCount: releases.length,
+                  itemBuilder: (context, i) {
+                    final release = releases[i];
+                    return ReleaseCard(
+                      release: release,
+                      onTap: () => _openRelease(release),
+                    );
+                  },
+                ),
+              // Kept mounted so it can animate in and out, but untappable
+              // and unfocusable while hidden.
+              Positioned(
+                right: _kFloatingControlsMargin,
+                bottom: _kFloatingControlsMargin,
+                child: IgnorePointer(
+                  ignoring: searchExpanded,
+                  child: ExcludeFocus(
+                    excluding: searchExpanded,
+                    child: AnimatedScale(
+                      scale: searchExpanded ? 0.8 : 1,
+                      alignment: Alignment.bottomRight,
+                      duration: _kFloatingControlsAnimation,
+                      curve: Curves.easeOut,
+                      child: AnimatedOpacity(
+                        opacity: searchExpanded ? 0 : 1,
+                        duration: _kFloatingControlsAnimation,
+                        curve: Curves.easeOut,
+                        child: _floatingControls(lib,
+                            holdSearchFocus: !searchExpanded),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
+        if (searchExpanded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  // Only the field's own focus loss closes the search, not
+                  // the icon's as it's swapped out for the field.
+                  child: Focus(
+                    canRequestFocus: false,
+                    skipTraversal: true,
+                    onFocusChange: (focused) {
+                      if (!focused) setState(() => _searchOpen = false);
+                    },
+                    child: LibrarySearchField(focusNode: _searchFocus),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _sortToggle(lib),
+              ],
+            ),
+          ),
       ],
     );
   }
+
+  // Collapsed search and the sort toggle, floating over the bottom right of
+  // the list so releases stay visible beside them.
+  // Bigger buttons than the bar's, so they're easy to hit.
+  Widget _floatingControls(LibraryProvider lib,
+      {required bool holdSearchFocus}) {
+    final style = IconButton.styleFrom(
+      minimumSize: const Size.square(_kFloatingButtonSize),
+      iconSize: 26,
+    );
+    return Material(
+      elevation: 3,
+      shape: const StadiumBorder(),
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      child: Padding(
+        padding: const EdgeInsets.all(_kFloatingControlsPadding),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _collapsedSearch(style: style, holdFocus: holdSearchFocus),
+            _sortToggle(lib, style: style),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Holds the search focus node while collapsed, so ⌘F (see AppShell)
+  // landing on it opens the search just as tapping the icon does. Focus is
+  // dropped first so the field sees itself gain it, which is what brings
+  // up the keyboard. Lets go of the node while the field has it.
+  Widget _collapsedSearch({ButtonStyle? style, required bool holdFocus}) =>
+      Focus(
+        focusNode: holdFocus ? _searchFocus : null,
+        onFocusChange: (focused) {
+          if (!focused) return;
+          _searchFocus.unfocus();
+          _openSearch();
+        },
+        child: IconButton(
+          style: style,
+          icon: const Icon(Icons.search),
+          tooltip: 'Search',
+          onPressed: _openSearch,
+        ),
+      );
 
   // Filtering only makes sense against the grid, so a filter change while a
   // release is showing goes back to it.
