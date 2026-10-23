@@ -453,8 +453,9 @@ void main() {
       final scrolledTo = gridPosition().pixels;
       expect(scrolledTo, greaterThan(0));
 
-      await tester.tap(find.byType(ReleaseGridTile).first);
+      await tester.tap(find.byType(ReleaseGridTile).hitTestable().first);
       await tester.pumpAndSettle();
+      expect(find.byType(ReleaseScreen), findsOneWidget);
       await tester.tap(find.text('Home'));
       await tester.pumpAndSettle();
 
