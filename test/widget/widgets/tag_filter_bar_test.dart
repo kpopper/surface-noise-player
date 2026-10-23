@@ -30,6 +30,7 @@ void main() {
     await tester.pumpWidget(wrapWithProvider(provider));
     await tester.pump(); // settle FutureBuilder
     expect(find.byType(TagChip), findsNothing);
+    expect(find.text('untagged'), findsNothing);
   });
 
   testWidgets('renders a chip for each tag', (tester) async {
@@ -39,6 +40,13 @@ void main() {
     expect(find.text('jazz'), findsOneWidget);
     expect(find.text('rock'), findsOneWidget);
     expect(find.text('vinyl'), findsOneWidget);
+  });
+
+  testWidgets('renders an untagged chip', (tester) async {
+    final provider = await buildProvider(tags: ['jazz', 'rock', 'vinyl']);
+    await tester.pumpWidget(wrapWithProvider(provider));
+    await tester.pump();
+    expect(find.text('untagged'), findsOneWidget);
   });
 
   testWidgets('tapping a chip calls toggleTag on the provider', (tester) async {
@@ -61,5 +69,67 @@ void main() {
     await tester.pump();
 
     expect(provider.activeTags, isEmpty);
+  });
+
+  testWidgets('tapping untagged chip calls toggleUntagged on the provider',
+      (tester) async {
+    final provider = await buildProvider(tags: ['jazz']);
+    await tester.pumpWidget(wrapWithProvider(provider));
+    await tester.pump();
+
+    await tester.tap(find.text('untagged'));
+    await tester.pump();
+
+    expect(provider.untaggedActive, isTrue);
+  });
+
+  testWidgets('tapping an already-active untagged chip deactivates it',
+      (tester) async {
+    final provider = await buildProvider(tags: ['jazz']);
+    provider.toggleUntagged();
+    await tester.pumpWidget(wrapWithProvider(provider));
+    await tester.pump();
+
+    await tester.tap(find.text('untagged'));
+    await tester.pump();
+
+    expect(provider.untaggedActive, isFalse);
+  });
+
+  testWidgets('untagged chip shows as selected while active', (tester) async {
+    final provider = await buildProvider(tags: ['jazz']);
+    provider.toggleUntagged();
+    await tester.pumpWidget(wrapWithProvider(provider));
+    await tester.pump();
+
+    final chip = tester.widget<TagChip>(find.ancestor(
+        of: find.text('untagged'), matching: find.byType(TagChip)));
+    expect(chip.selected, isTrue);
+  });
+
+  testWidgets('untagged chip stays last when a tag is active', (tester) async {
+    final provider = await buildProvider(
+        tags: ['jazz', 'rock', 'vinyl'], activeTags: ['rock']);
+    await tester.pumpWidget(wrapWithProvider(provider));
+    await tester.pump();
+
+    final labels = tester
+        .widgetList<TagChip>(find.byType(TagChip))
+        .map((c) => c.label)
+        .toList();
+    expect(labels, ['rock', 'jazz', 'vinyl', 'untagged']);
+  });
+
+  testWidgets('an active untagged chip moves to the front', (tester) async {
+    final provider = await buildProvider(tags: ['jazz', 'rock']);
+    provider.toggleUntagged();
+    await tester.pumpWidget(wrapWithProvider(provider));
+    await tester.pump();
+
+    final labels = tester
+        .widgetList<TagChip>(find.byType(TagChip))
+        .map((c) => c.label)
+        .toList();
+    expect(labels, ['untagged', 'jazz', 'rock']);
   });
 }

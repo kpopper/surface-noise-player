@@ -231,6 +231,28 @@ void main() {
       expect(find.textContaining('No releases match'), findsOneWidget);
       expect(find.byType(TagFilterBar), findsOneWidget);
     });
+
+    testWidgets(
+        'the untagged chip can be turned off again when it matches nothing',
+        (tester) async {
+      final provider =
+          await pumpLibraryScreen(tester, savedRoot: '/music', releases: [
+        makeRelease('Album A', tags: ['jazz'])
+      ], tags: [
+        'jazz'
+      ]);
+      final untaggedChip = find.descendant(
+          of: find.byType(TagFilterBar), matching: find.text('untagged'));
+
+      await tester.tap(untaggedChip);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('No releases match'), findsOneWidget);
+
+      await tester.tap(untaggedChip);
+      await tester.pumpAndSettle();
+      expect(provider.untaggedActive, isFalse);
+      expect(find.text('Album A'), findsOneWidget);
+    });
   });
 
   group('search filtering', () {

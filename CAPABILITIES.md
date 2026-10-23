@@ -53,6 +53,7 @@ writing a feature; remove or update it when behaviour changes.
 - Tapping an already-active tag deactivates it, restoring results for any remaining active tags (or the full list if none remain) — there is no separate "Clear" control
 - A filter that matches no releases shows an empty state
 - An "untagged" filter appears at the end of the filter list once at least one release has a tag — it is a filter, not a tag, and is unaffected by any real tag that happens to be called "untagged"
+- In the phone filter bar, an active "untagged" filter moves to the front along with any other active tags; in the desktop sidebar, which doesn't reorder active tags, it stays at the end
 - Activating the "untagged" filter shows only releases that have no tags
 - The "untagged" filter combines with active tag filters using the same AND logic, so activating both shows no releases — neither switches the other off
 
