@@ -43,9 +43,8 @@ class TagChip extends StatelessWidget {
       selectedColor: color,
       showCheckmark: false,
       onSelected: onTap != null ? (_) => onTap!() : null,
-      deleteIcon: selected
-          ? Icon(Icons.close, size: 14, color: Colors.white)
-          : null,
+      deleteIcon:
+          selected ? Icon(Icons.close, size: 14, color: Colors.white) : null,
       onDeleted: selected ? onTap : null,
     );
   }

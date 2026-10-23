@@ -47,7 +47,8 @@ void main() {
     expect(await File(artPath!).readAsBytes(), [1, 2, 3]);
   });
 
-  test('prefers a result matching both artist and album name over the top result',
+  test(
+      'prefers a result matching both artist and album name over the top result',
       () async {
     final client = MockClient((request) async {
       if (request.url.host == 'itunes.apple.com') {

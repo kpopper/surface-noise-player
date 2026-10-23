@@ -266,9 +266,7 @@ void main() {
         expect(fakeMusicBrainz.lastFetchedArtist, 'Track Artist');
       });
 
-      test(
-          'falls back to iTunes when MusicBrainz finds no artwork',
-          () async {
+      test('falls back to iTunes when MusicBrainz finds no artwork', () async {
         final albumDir = await createAlbum('Album', ['01.mp3']);
         fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(
             albumArtist: 'The Artist', albumTitle: 'Great Album');
@@ -281,8 +279,7 @@ void main() {
         expect(fakeItunesArtwork.lastFetchedTitle, 'Great Album');
       });
 
-      test(
-          'does not call iTunes when MusicBrainz already found artwork',
+      test('does not call iTunes when MusicBrainz already found artwork',
           () async {
         final albumDir = await createAlbum('Album', ['01.mp3']);
         fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(
@@ -481,7 +478,8 @@ void main() {
     });
 
     group('rescanRelease', () {
-      test('overwrites a previously stored name, album title, and artist '
+      test(
+          'overwrites a previously stored name, album title, and artist '
           'with freshly-read tags', () async {
         final albumDir = await createAlbum('Album', ['01.mp3']);
         fakeMetadata.responses['${albumDir.path}/01.mp3'] = const AudioMetadata(
@@ -562,7 +560,9 @@ void main() {
 
         await service.rescanRelease(albumDir.path);
 
-        expect((await dbService.loadRelease(albumDir.path))!['first_track_scanned'],
+        expect(
+            (await dbService
+                .loadRelease(albumDir.path))!['first_track_scanned'],
             1);
       });
     });
@@ -740,8 +740,7 @@ void main() {
       expect(fakeBookmarks.evictFileCalls, ['${tempDir.path}/01.mp3']);
     });
 
-    test(
-        'does not evict the first track when it was already downloaded',
+    test('does not evict the first track when it was already downloaded',
         () async {
       // Same regression as rescanRelease's: an artwork retry on an
       // already-downloaded release shouldn't evict its first track purely
